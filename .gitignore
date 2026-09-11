@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.env
+.env.local
+
+# Build output
+dist/
+
+# Screenshots and generated reports
+*.png
+out/
+reports/
+
+# Test + tooling caches
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store

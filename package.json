@@ -1,0 +1,36 @@
+{
+  "name": "tovi",
+  "version": "0.1.0",
+  "description": "True-to-Figma Output Validation Inspector — deterministic Figma vs live-page comparison",
+  "type": "module",
+  "bin": {
+    "tovi": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "node dist/index.js check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "culori": "^4.0.1",
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/culori": "^2.1.1",
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}
