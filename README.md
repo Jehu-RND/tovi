@@ -22,9 +22,15 @@ whose value is exactly the **Figma layer name**:
 Figma layer:  hero-heading
 ```
 
-That shared key is the only link between the two sides. No fuzzy matching, no
-position-based guessing — if the attribute is missing or misspelled, TOVI
-reports the element as unpaired rather than trying to figure it out.
+The config maps each `figmaId` to an explicit Figma `nodeId`, so the Figma side
+is located by node id and the HTML side by attribute. **Your Figma layer names
+do not have to match anything** — `figmaId` is just a label you choose. That
+matters in practice: real files are full of `Frame 31306` and six layers all
+called `Button`, which name-based pairing could never resolve.
+
+No fuzzy matching, no position-based guessing. If the attribute is missing,
+TOVI reports the element as unpaired; if two elements share one, it reports the
+key as ambiguous rather than picking one.
 
 ## The two passes
 
@@ -122,9 +128,29 @@ Your Figma frame width should match the configured `viewport.width`.
 
 ## Project status
 
-**Scaffolding.** The types and function signatures are in place; the
-implementations are stubs marked with `TODO`. Tests are written but skipped
-until the code they cover exists.
+Feature-complete for a first run: every module is implemented, and the full
+pipeline has been exercised end to end against a real Figma file.
+
+`npm test` runs 100 tests. The integration suite drives real Chromium against
+[tests/fixtures/page.html](tests/fixtures/page.html) and skips itself if the
+browser is not downloaded.
+
+### Known gaps
+
+- **Borders are not compared.** An outline button — no fill, all `stroke` — has
+  its box checked but not what makes it look like a button.
+- **`line-height: normal` is skipped, not flagged.** It is font-dependent, so
+  there is no honest number to compare it against.
+- **Gradients only compare when flat.** A gradient whose stops are all one
+  colour is compared as that colour; a real gradient is skipped.
+- **Text is compared per element, not per text run.** A paragraph with mixed
+  styling is compared against the Figma node's dominant style.
+
+### Environment
+
+The CLI loads `.env` on startup via `process.loadEnvFile` (Node 20.12+). Real
+environment variables take precedence, so a local `.env` can never override a
+token injected by CI.
 
 ## Layout
 
@@ -135,7 +161,7 @@ src/
   config/             config schema + loading
   figma/              REST client + node normalization
   live/               Playwright extraction
-  compare/            the two passes + color normalization
+  compare/            the two passes + color and Issue helpers
   report/             issue grouping + HTML rendering
 tests/                one placeholder suite per pass
 ```

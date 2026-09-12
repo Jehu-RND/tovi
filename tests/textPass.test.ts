@@ -1,15 +1,14 @@
 /**
- * Pass B (text) — placeholder tests.
- *
- * These are skipped on purpose: the implementation is still a stub, so an
- * active test here would fail the suite for a known reason and train everyone
- * to ignore red. Un-skip each one as diffText() lands.
+ * Pass B (text) — comparison behaviour.
  */
 
-import { describe, it, expect } from 'vitest';
-import type { ElementPair, TextSpec } from '../src/types.js';
-import type { Tolerances } from '../src/config/schema.js';
+import { describe, expect, it } from 'vitest';
+import { comparableTextKeys, diffText, normalizeFontFamily } from '../src/compare/textPass.js';
 import { DEFAULT_TOLERANCES } from '../src/config/schema.js';
+import type { Tolerances } from '../src/config/schema.js';
+import type { ElementPair, TextSpec } from '../src/types.js';
+
+const tolerances: Tolerances = DEFAULT_TOLERANCES;
 
 /** Build a TextSpec with sensible defaults for whichever fields a test ignores. */
 function textSpec(overrides: Partial<TextSpec> = {}): TextSpec {
@@ -24,7 +23,11 @@ function textSpec(overrides: Partial<TextSpec> = {}): TextSpec {
 }
 
 /** Build a paired element whose two sides differ only where a test says so. */
-function pair(figmaText: Partial<TextSpec>, liveText: Partial<TextSpec>): ElementPair {
+function pair(
+  figmaText: Partial<TextSpec> = {},
+  liveText: Partial<TextSpec> = {},
+  extra: { characters?: string; textContent?: string } = {},
+): ElementPair {
   return {
     figmaId: 'hero-heading',
     figma: {
@@ -33,6 +36,7 @@ function pair(figmaText: Partial<TextSpec>, liveText: Partial<TextSpec>): Elemen
       type: 'TEXT',
       absoluteBoundingBox: { x: 0, y: 0, width: 600, height: 64 },
       text: textSpec(figmaText),
+      ...(extra.characters !== undefined ? { characters: extra.characters } : {}),
     },
     live: {
       figmaId: 'hero-heading',
@@ -44,38 +48,112 @@ function pair(figmaText: Partial<TextSpec>, liveText: Partial<TextSpec>): Elemen
       color: { r: 17, g: 17, b: 17, a: 1 },
       shadows: [],
       text: textSpec(liveText),
-      textContent: 'Hero heading',
+      textContent: extra.textContent ?? 'Hero heading',
     },
   };
 }
 
-const tolerances: Tolerances = DEFAULT_TOLERANCES;
+describe('normalizeFontFamily', () => {
+  it('takes the first family and strips quotes and case', () => {
+    expect(normalizeFontFamily('"Inter", system-ui, sans-serif')).toBe('inter');
+    expect(normalizeFontFamily("  'Source Serif Pro' , Georgia ")).toBe('source serif pro');
+  });
+});
+
+describe('comparableTextKeys', () => {
+  it('skips properties that are unusable on either side', () => {
+    const a = textSpec();
+    const b = textSpec({ fontFamily: '', lineHeight: Number.NaN });
+    expect(comparableTextKeys(a, b)).toEqual(['fontSize', 'fontWeight', 'letterSpacing']);
+  });
+});
 
 describe('diffText', () => {
-  it.skip('reports no issues when every text property matches', () => {
-    // TODO: expect(diffText(pair({}, {}), tolerances)).toEqual([]);
-    expect(pair({}, {})).toBeDefined();
+  it('reports no issues when every text property matches', () => {
+    expect(diffText(pair(), tolerances)).toEqual([]);
   });
 
-  it.skip('reports a fontSize issue when the size drifts beyond tolerance', () => {
-    // TODO: figma 24px vs live 28px -> one 'fontSize' issue with delta 4.
-    expect(tolerances.fontSize).toBe(0.5);
+  it('reports a fontSize issue when the size drifts beyond tolerance', () => {
+    const issues = diffText(pair({ fontSize: 24 }, { fontSize: 28 }), tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      pass: 'text',
+      property: 'fontSize',
+      severity: 'error',
+      expected: '24px',
+      actual: '28px',
+      delta: 4,
+      tolerance: 0.5,
+    });
   });
 
-  it.skip('ignores a size difference that falls within tolerance', () => {
-    // TODO: figma 24px vs live 24.3px -> [].
+  it('ignores a size difference that falls within tolerance', () => {
+    expect(diffText(pair({ fontSize: 24 }, { fontSize: 24.3 }), tolerances)).toEqual([]);
   });
 
-  it.skip('reports a fontWeight issue for any difference (tolerance is 0)', () => {
-    // TODO: figma 600 vs live 700 -> one 'fontWeight' issue.
+  it('reports a fontWeight issue for any difference, without a px unit', () => {
+    const issues = diffText(pair({ fontWeight: 600 }, { fontWeight: 700 }), tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'fontWeight',
+      expected: '600',
+      actual: '700',
+      delta: 100,
+    });
   });
 
-  it.skip('compares only the first family in a CSS font stack', () => {
-    // TODO: figma "Inter" vs live "Inter, system-ui, sans-serif" -> [].
+  it('compares only the first family in a CSS font stack', () => {
+    const issues = diffText(
+      pair({ fontFamily: 'Inter' }, { fontFamily: 'Inter, system-ui, sans-serif' }),
+      tolerances,
+    );
+    expect(issues).toEqual([]);
   });
 
-  it.skip('reports a structural issue when the live side is missing', () => {
-    // TODO: pair with live undefined -> one 'missingInLive' issue, and no
-    //       per-property issues alongside it.
+  it('reports a fontFamily issue with no delta when the families differ', () => {
+    const issues = diffText(pair({ fontFamily: 'Inter' }, { fontFamily: 'Roboto' }), tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'fontFamily', expected: 'Inter', actual: 'Roboto' });
+    expect(issues[0]?.delta).toBeUndefined();
+  });
+
+  it('reports copy drift as a warning, not an error', () => {
+    const issues = diffText(
+      pair({}, {}, { characters: 'Ship   faster', textContent: 'Ship sooner' }),
+      tolerances,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'textContent',
+      severity: 'warning',
+      expected: 'Ship faster',
+      actual: 'Ship sooner',
+    });
+  });
+
+  it('ignores whitespace-only copy differences', () => {
+    const issues = diffText(
+      pair({}, {}, { characters: 'Ship\n  faster', textContent: 'Ship faster' }),
+      tolerances,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('returns nothing for a non-TEXT node', () => {
+    const element = pair();
+    delete element.figma?.text;
+    expect(diffText(element, tolerances)).toEqual([]);
+  });
+
+  it('reports one structural issue when the live side is missing', () => {
+    const issues = diffText({ figmaId: 'hero-heading', figma: pair().figma }, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'missingInLive', severity: 'error' });
+  });
+
+  it('reports one structural issue when the Figma side is missing', () => {
+    const issues = diffText({ figmaId: 'hero-heading', live: pair().live }, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'missingInFigma', severity: 'error' });
   });
 });

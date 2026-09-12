@@ -1,14 +1,12 @@
 /**
  * TOVI — Pass A: geometry & spec.
  *
- * STUB: no implementation yet.
- *
  * Compares size, position, padding, corner radius, color, and shadow between
  * the Figma Dev Mode spec values and the live element's getBoundingClientRect
  * + getComputedStyle output.
  *
  * ====================================================================
- * COORDINATE NORMALIZATION — read before implementing anything here.
+ * COORDINATE NORMALIZATION — read before changing anything here.
  * ====================================================================
  *
  * Figma canvas coordinates and browser viewport coordinates MUST NOT be
@@ -42,7 +40,7 @@
  * Sizes (width/height) need no such treatment: they are already relative
  * quantities and compare directly.
  *
- * Two consequences worth remembering while implementing:
+ * Two consequences worth remembering:
  *   - The section rect must be measured on BOTH sides. A run without a live
  *     section rect cannot do Pass A position checks at all — fail loudly
  *     rather than silently falling back to absolute coordinates.
@@ -52,9 +50,27 @@
  *     report per element.
  */
 
-import type { ElementPair, SectionContext, Rect, BoxSides, CornerRadius, Shadow } from '../types.js';
+import type {
+  BoxSides,
+  CornerRadius,
+  ElementPair,
+  Rect,
+  SectionContext,
+  Shadow,
+} from '../types.js';
 import type { Tolerances } from '../config/schema.js';
 import type { Issue } from '../report/types.js';
+import { colorDistance, colorsMatch, formatColor } from './color.js';
+import { compareNumeric, structuralIssue, valueIssue } from './issues.js';
+import type { Rgba } from '../types.js';
+
+const SIDES: Array<keyof BoxSides> = ['top', 'right', 'bottom', 'left'];
+const CORNERS: Array<keyof CornerRadius> = [
+  'topLeft',
+  'topRight',
+  'bottomRight',
+  'bottomLeft',
+];
 
 /**
  * Compare the geometry and spec properties of one paired element.
@@ -70,20 +86,77 @@ export function diffGeometry(
   section: SectionContext,
   tolerances: Tolerances,
 ): Issue[] {
-  // TODO: if either side is missing, return a single structural Issue and stop.
-  // TODO: compare width and height directly against tolerances.size.
-  // TODO: normalize BOTH sides with toRelativeOffset() before comparing
-  //       position, then diff offsetX/offsetY against tolerances.position.
-  //       Never compare pair.figma.absoluteBoundingBox.x against
-  //       pair.live.boundingRect.x — see the note at the top of this file.
-  // TODO: compare padding per side, corner radius per corner, background and
-  //       text color via compare/color, and shadows via diffShadows().
-  // TODO: skip any property absent on the Figma side — an unset design value
-  //       is not an assertion that the live value must be zero.
-  void pair;
-  void section;
-  void tolerances;
-  throw new Error('TODO: diffGeometry is not implemented');
+  if (pair.figma === undefined) {
+    return [structuralIssue(pair.figmaId, 'geometry', 'missingInFigma')];
+  }
+  if (pair.live === undefined) {
+    return [structuralIssue(pair.figmaId, 'geometry', 'missingInLive')];
+  }
+
+  const { figmaId, figma, live } = pair;
+  const figmaRect = figma.absoluteBoundingBox;
+  const liveRect = live.boundingRect;
+  const issues: Issue[] = [];
+
+  // --- Size: already relative, compares directly. ---
+  const width = compareNumeric(
+    figmaId, 'geometry', 'width', figmaRect.width, liveRect.width, tolerances.size,
+  );
+  if (width !== undefined) issues.push(width);
+
+  const height = compareNumeric(
+    figmaId, 'geometry', 'height', figmaRect.height, liveRect.height, tolerances.size,
+  );
+  if (height !== undefined) issues.push(height);
+
+  // --- Position: normalize BOTH sides against their own section first. ---
+  // Never compare figmaRect.x against liveRect.x. See the note above.
+  const expectedOffset = toRelativeOffset(figmaRect, section.figma);
+  const actualOffset = toRelativeOffset(liveRect, section.live);
+
+  const offsetX = compareNumeric(
+    figmaId, 'geometry', 'offsetX', expectedOffset.x, actualOffset.x, tolerances.position,
+  );
+  if (offsetX !== undefined) issues.push(offsetX);
+
+  const offsetY = compareNumeric(
+    figmaId, 'geometry', 'offsetY', expectedOffset.y, actualOffset.y, tolerances.position,
+  );
+  if (offsetY !== undefined) issues.push(offsetY);
+
+  // --- Spec properties. Each is skipped when the design does not set it: an
+  // unset design value is not an assertion that the live value must be zero.
+  if (figma.padding !== undefined) {
+    issues.push(...diffPadding(figmaId, figma.padding, live.padding, tolerances.padding));
+  }
+
+  if (figma.cornerRadius !== undefined) {
+    issues.push(
+      ...diffCornerRadius(
+        figmaId, figma.cornerRadius, live.cornerRadius, tolerances.cornerRadius, liveRect,
+      ),
+    );
+  }
+
+  if (figma.backgroundColor !== undefined) {
+    const issue = diffColor(
+      figmaId, 'backgroundColor', figma.backgroundColor, live.backgroundColor, tolerances.color,
+    );
+    if (issue !== undefined) issues.push(issue);
+  }
+
+  if (figma.color !== undefined) {
+    const issue = diffColor(figmaId, 'color', figma.color, live.color, tolerances.color);
+    if (issue !== undefined) issues.push(issue);
+  }
+
+  if (figma.shadows !== undefined) {
+    issues.push(
+      ...diffShadows(figmaId, figma.shadows, live.shadows, tolerances.shadow, tolerances.color),
+    );
+  }
+
+  return issues;
 }
 
 /**
@@ -93,34 +166,78 @@ export function diffGeometry(
  * This is the function that makes Figma canvas space and browser viewport
  * space comparable; see the note at the top of this file.
  */
-export function toRelativeOffset(_element: Rect, _section: Rect): { x: number; y: number } {
-  // TODO: return { x: element.x - section.x, y: element.y - section.y }.
-  throw new Error('TODO: toRelativeOffset is not implemented');
+export function toRelativeOffset(element: Rect, section: Rect): { x: number; y: number } {
+  return { x: element.x - section.x, y: element.y - section.y };
 }
 
 /** Compare padding side by side, emitting one Issue per drifting side. */
 export function diffPadding(
-  _figmaId: string,
-  _expected: BoxSides,
-  _actual: BoxSides,
-  _tolerance: number,
+  figmaId: string,
+  expected: BoxSides,
+  actual: BoxSides,
+  tolerance: number,
 ): Issue[] {
-  // TODO: loop the four sides, setting Issue.detail to the side name.
-  throw new Error('TODO: diffPadding is not implemented');
+  const issues: Issue[] = [];
+  for (const side of SIDES) {
+    const issue = compareNumeric(
+      figmaId, 'geometry', 'padding', expected[side], actual[side], tolerance, { detail: side },
+    );
+    if (issue !== undefined) issues.push(issue);
+  }
+  return issues;
+}
+
+/**
+ * The largest radius a browser will actually paint on a box of this size.
+ *
+ * CSS clamps border-radius so adjacent corners cannot overlap, capping each at
+ * half the shorter side. A 40px radius specified on a 48px-tall pill renders
+ * as 24px — that is the browser agreeing with the design, not drifting from
+ * it, so the expected value is clamped the same way before comparison.
+ */
+function clampRadius(radius: number, rect: Rect): number {
+  return Math.min(radius, Math.min(rect.width, rect.height) / 2);
 }
 
 /** Compare corner radii, emitting one Issue per drifting corner. */
 export function diffCornerRadius(
-  _figmaId: string,
-  _expected: CornerRadius,
-  _actual: CornerRadius,
-  _tolerance: number,
+  figmaId: string,
+  expected: CornerRadius,
+  actual: CornerRadius,
+  tolerance: number,
+  liveRect: Rect,
 ): Issue[] {
-  // TODO: loop the four corners, setting Issue.detail to the corner name.
-  // TODO: guard against CSS clamping — a browser caps radius at half the
-  //       shorter side, so a large Figma radius on a small box is a match, not
-  //       a mismatch.
-  throw new Error('TODO: diffCornerRadius is not implemented');
+  const issues: Issue[] = [];
+  for (const corner of CORNERS) {
+    const issue = compareNumeric(
+      figmaId,
+      'geometry',
+      'cornerRadius',
+      clampRadius(expected[corner], liveRect),
+      actual[corner],
+      tolerance,
+      { detail: corner },
+    );
+    if (issue !== undefined) issues.push(issue);
+  }
+  return issues;
+}
+
+/** Compare one color, reporting the perceptual distance as the delta. */
+function diffColor(
+  figmaId: string,
+  property: 'backgroundColor' | 'color',
+  expected: Rgba,
+  actual: Rgba,
+  tolerance: number,
+  detail?: string,
+): Issue | undefined {
+  if (colorsMatch(expected, actual, tolerance)) return undefined;
+  return valueIssue(figmaId, 'geometry', property, formatColor(expected), formatColor(actual), {
+    delta: colorDistance(expected, actual),
+    tolerance,
+    ...(detail !== undefined ? { detail } : {}),
+  });
 }
 
 /**
@@ -128,17 +245,71 @@ export function diffCornerRadius(
  *
  * Shadows are ordered lists, so this compares index by index and reports a
  * count mismatch when the stacks are different lengths rather than trying to
- * pair them heuristically.
+ * pair them heuristically — a guess there would attribute a delta to the wrong
+ * layer and send someone editing the wrong rule.
  */
 export function diffShadows(
-  _figmaId: string,
-  _expected: Shadow[],
-  _actual: Shadow[],
-  _tolerance: number,
-  _colorTolerance: number,
+  figmaId: string,
+  expected: Shadow[],
+  actual: Shadow[],
+  tolerance: number,
+  colorTolerance: number,
 ): Issue[] {
-  // TODO: report a count mismatch first and return early when lengths differ.
-  // TODO: otherwise compare offsetX/offsetY/blur/spread numerically and color
-  //       via compare/color, setting Issue.detail to the shadow index.
-  throw new Error('TODO: diffShadows is not implemented');
+  if (expected.length !== actual.length) {
+    return [
+      valueIssue(
+        figmaId,
+        'geometry',
+        'shadow',
+        `${expected.length} shadow${expected.length === 1 ? '' : 's'}`,
+        `${actual.length} shadow${actual.length === 1 ? '' : 's'}`,
+        { detail: 'count' },
+      ),
+    ];
+  }
+
+  const issues: Issue[] = [];
+  for (let index = 0; index < expected.length; index += 1) {
+    const want = expected[index];
+    const got = actual[index];
+    if (want === undefined || got === undefined) continue;
+
+    if (want.inset !== got.inset) {
+      issues.push(
+        valueIssue(
+          figmaId,
+          'geometry',
+          'shadow',
+          want.inset ? 'inset' : 'outset',
+          got.inset ? 'inset' : 'outset',
+          { detail: `${index}.inset` },
+        ),
+      );
+      // An inset/outset flip makes the remaining numbers incomparable.
+      continue;
+    }
+
+    const metrics = ['offsetX', 'offsetY', 'blur', 'spread'] as const;
+    for (const metric of metrics) {
+      const issue = compareNumeric(
+        figmaId, 'geometry', 'shadow', want[metric], got[metric], tolerance,
+        { detail: `${index}.${metric}` },
+      );
+      if (issue !== undefined) issues.push(issue);
+    }
+
+    if (!colorsMatch(want.color, got.color, colorTolerance)) {
+      issues.push(
+        valueIssue(
+          figmaId, 'geometry', 'shadow', formatColor(want.color), formatColor(got.color),
+          {
+            delta: colorDistance(want.color, got.color),
+            tolerance: colorTolerance,
+            detail: `${index}.color`,
+          },
+        ),
+      );
+    }
+  }
+  return issues;
 }

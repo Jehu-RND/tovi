@@ -1,16 +1,18 @@
 /**
- * Pass A (geometry) — placeholder tests.
+ * Pass A (geometry) — comparison behaviour.
  *
- * Skipped until diffGeometry() is implemented. The fixture below deliberately
- * uses very different absolute origins on the two sides (Figma canvas at
- * x=4000, browser viewport at x=0) so that the first real test to run will
- * catch any implementation that compares absolute coordinates.
+ * The fixture deliberately uses very different absolute origins on the two
+ * sides (Figma canvas at x=4000, browser viewport at x=0) so that any
+ * implementation comparing absolute coordinates fails immediately.
  */
 
-import { describe, it, expect } from 'vitest';
-import type { ElementPair, SectionContext } from '../src/types.js';
-import type { Tolerances } from '../src/config/schema.js';
+import { describe, expect, it } from 'vitest';
+import { diffGeometry, toRelativeOffset } from '../src/compare/geometryPass.js';
 import { DEFAULT_TOLERANCES } from '../src/config/schema.js';
+import type { Tolerances } from '../src/config/schema.js';
+import type { ElementPair, SectionContext, Shadow } from '../src/types.js';
+
+const tolerances: Tolerances = DEFAULT_TOLERANCES;
 
 /**
  * The section both sides are normalized against.
@@ -59,47 +61,164 @@ function alignedPair(): ElementPair {
   };
 }
 
-const tolerances: Tolerances = DEFAULT_TOLERANCES;
+function shadow(overrides: Partial<Shadow> = {}): Shadow {
+  return {
+    offsetX: 0,
+    offsetY: 2,
+    blur: 8,
+    spread: 0,
+    color: { r: 0, g: 0, b: 0, a: 0.25 },
+    inset: false,
+    ...overrides,
+  };
+}
 
 describe('toRelativeOffset', () => {
-  it.skip('subtracts the section origin from the element origin', () => {
-    // TODO: toRelativeOffset({x: 4120, y: 2480, ...}, section.figma)
-    //       -> { x: 120, y: 80 }
-    expect(section.figma.x).toBe(4000);
+  it('subtracts the section origin from the element origin', () => {
+    expect(toRelativeOffset({ x: 4120, y: 2480, width: 180, height: 48 }, section.figma))
+      .toEqual({ x: 120, y: 80 });
+    expect(toRelativeOffset({ x: 120, y: 176, width: 180, height: 48 }, section.live))
+      .toEqual({ x: 120, y: 80 });
   });
 });
 
 describe('diffGeometry', () => {
-  it.skip('reports no issues when relative offsets match despite different absolute origins', () => {
-    // This is the load-bearing test for the whole pass. Both sides sit at a
-    // relative (120, 80) but their absolute coordinates differ by thousands of
-    // px. An implementation that compares absolute values fails here.
-    // TODO: expect(diffGeometry(alignedPair(), section, tolerances)).toEqual([]);
-    expect(alignedPair().figma?.absoluteBoundingBox.x).toBe(4120);
+  it('reports no issues when relative offsets match despite different absolute origins', () => {
+    // The load-bearing test for the whole pass. Both sides sit at a relative
+    // (120, 80) but their absolute coordinates differ by thousands of px.
+    const element = alignedPair();
+    expect(element.figma?.absoluteBoundingBox.x).toBe(4120);
+    expect(element.live?.boundingRect.x).toBe(120);
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
   });
 
-  it.skip('reports an offsetX issue when the relative horizontal offset drifts', () => {
-    // TODO: shift the live rect to x=140 -> one 'offsetX' issue with delta 20.
+  it('reports an offsetX issue when the relative horizontal offset drifts', () => {
+    const element = alignedPair();
+    element.live!.boundingRect.x = 140;
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      pass: 'geometry',
+      property: 'offsetX',
+      expected: '120px',
+      actual: '140px',
+      delta: 20,
+      tolerance: 2,
+    });
   });
 
-  it.skip('reports width and height issues independently of position', () => {
-    // TODO: live width 200 vs figma 180 -> one 'width' issue, no position ones.
+  it('ignores a position difference inside tolerance', () => {
+    const element = alignedPair();
+    element.live!.boundingRect.y = 177.5;
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
   });
 
-  it.skip('reports one padding issue per drifting side, tagged with the side name', () => {
-    // TODO: live paddingLeft 32 vs figma 24 -> one issue with detail 'left'.
+  it('reports width independently of position', () => {
+    const element = alignedPair();
+    element.live!.boundingRect.width = 200;
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues.map((issue) => issue.property)).toEqual(['width']);
+    expect(issues[0]).toMatchObject({ delta: 20, tolerance: 1 });
   });
 
-  it.skip('treats a browser-clamped corner radius as a match', () => {
-    // TODO: figma radius 40 on a 48px-tall box; CSS clamps to 24 -> [].
+  it('reports one padding issue per drifting side, tagged with the side name', () => {
+    const element = alignedPair();
+    element.live!.padding.left = 32;
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'padding', detail: 'left', delta: 8 });
   });
 
-  it.skip('reports a color issue only when the perceptual distance exceeds tolerance', () => {
-    // TODO: rgb(0,102,255) vs rgb(0,103,255) -> [] (deltaE under tolerance).
-    expect(tolerances.color).toBe(2);
+  it('treats a browser-clamped corner radius as a match', () => {
+    // A 40px radius on a 48px-tall box renders as 24px. That is CSS agreeing
+    // with the design, not drifting from it.
+    const element = alignedPair();
+    element.figma!.cornerRadius = {
+      topLeft: 40, topRight: 40, bottomRight: 40, bottomLeft: 40,
+    };
+    element.live!.cornerRadius = {
+      topLeft: 24, topRight: 24, bottomRight: 24, bottomLeft: 24,
+    };
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
   });
 
-  it.skip('reports a shadow count mismatch without pairing the stacks', () => {
-    // TODO: figma has 1 shadow, live has 2 -> one 'shadow' issue about count.
+  it('still reports a corner radius that drifts below the clamp', () => {
+    const element = alignedPair();
+    element.live!.cornerRadius.topLeft = 0;
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'cornerRadius', detail: 'topLeft', delta: -8 });
+  });
+
+  it('ignores a color difference below the perceptual tolerance', () => {
+    const element = alignedPair();
+    element.live!.backgroundColor = { r: 0, g: 103, b: 255, a: 1 };
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
+  });
+
+  it('reports a color difference above the perceptual tolerance', () => {
+    const element = alignedPair();
+    element.live!.backgroundColor = { r: 0, g: 112, b: 255, a: 1 };
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'backgroundColor',
+      expected: 'rgb(0, 102, 255)',
+      actual: 'rgb(0, 112, 255)',
+      tolerance: 2,
+    });
+    expect(issues[0]?.delta).toBeGreaterThan(2);
+  });
+
+  it('reports an opacity-only color difference that deltaE alone would miss', () => {
+    const element = alignedPair();
+    element.live!.backgroundColor = { r: 0, g: 102, b: 255, a: 0.5 };
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'backgroundColor',
+      actual: 'rgba(0, 102, 255, 0.5)',
+    });
+  });
+
+  it('skips properties the design does not set', () => {
+    const element = alignedPair();
+    delete element.figma?.padding;
+    delete element.figma?.cornerRadius;
+    delete element.figma?.backgroundColor;
+    element.live!.padding.left = 999;
+    element.live!.backgroundColor = { r: 255, g: 0, b: 0, a: 1 };
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
+  });
+
+  it('reports a shadow count mismatch without pairing the stacks', () => {
+    const element = alignedPair();
+    element.figma!.shadows = [shadow()];
+    element.live!.shadows = [shadow(), shadow({ offsetY: 12 })];
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'shadow',
+      detail: 'count',
+      expected: '1 shadow',
+      actual: '2 shadows',
+    });
+  });
+
+  it('reports the drifting metric of a matched shadow, tagged by index', () => {
+    const element = alignedPair();
+    element.figma!.shadows = [shadow({ blur: 8 })];
+    element.live!.shadows = [shadow({ blur: 16 })];
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'shadow', detail: '0.blur', delta: 8 });
+  });
+
+  it('reports one structural issue when the live side is missing', () => {
+    const issues = diffGeometry(
+      { figmaId: 'hero-cta', figma: alignedPair().figma }, section, tolerances,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'missingInLive' });
   });
 });

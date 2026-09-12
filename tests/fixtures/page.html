@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TOVI extraction fixture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; }
+
+  /* Chrome above the section, so the section does not start at viewport 0.
+     This is what makes absolute-coordinate comparison fail and relative
+     normalization succeed. */
+  .site-header { height: 96px; background: #111; }
+
+  .hero { position: relative; height: 720px; background: rgb(245, 245, 245); }
+
+  /* 120px in, 80px down from the section's own origin. */
+  .hero__heading {
+    position: absolute; left: 120px; top: 80px;
+    font-size: 40px; font-weight: 700; line-height: 48px; letter-spacing: -0.4px;
+    color: rgb(17, 17, 17);
+  }
+
+  .hero__cta {
+    position: absolute; left: 120px; top: 200px;
+    width: 180px; height: 48px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    background: rgb(0, 102, 255);
+    color: #fff;
+    font-size: 16px; font-weight: 600; line-height: 24px;
+    box-shadow: rgba(0, 0, 0, 0.25) 0px 2px 8px 1px;
+    border: none;
+  }
+
+  /* Exercises the percentage-radius path. */
+  .hero__avatar {
+    position: absolute; left: 400px; top: 200px;
+    width: 64px; height: 64px; border-radius: 50%;
+    background: rgb(200, 0, 0);
+  }
+
+  .dupe { position: absolute; top: 400px; width: 40px; height: 40px; background: #ccc; }
+</style>
+</head>
+<body>
+  <header class="site-header"></header>
+
+  <section class="hero" data-figma-id="hero">
+    <h1 class="hero__heading" data-figma-id="hero-heading">Built for every player</h1>
+    <button class="hero__cta" data-figma-id="hero-cta">Get started</button>
+    <div class="hero__avatar" data-figma-id="hero-avatar"></div>
+
+    <!-- Two elements share a key: must be reported ambiguous, not guessed. -->
+    <div class="dupe" data-figma-id="hero-dupe" style="left: 120px"></div>
+    <div class="dupe" data-figma-id="hero-dupe" style="left: 200px"></div>
+  </section>
+</body>
+</html>

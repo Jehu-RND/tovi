@@ -42,6 +42,8 @@ export type IssueProperty =
   // Structural
   | 'missingInFigma'
   | 'missingInLive'
+  | 'ambiguousInLive'
+  | 'skipped'
   | 'textContent';
 
 /** One property-level mismatch. */
