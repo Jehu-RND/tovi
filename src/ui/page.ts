@@ -150,7 +150,10 @@ export const UI_HTML = `<!doctype html>
       One entry per tagged element. <code>figmaId</code> is a label you choose and must match the
       element's <code>data-figma-id</code>; <code>nodeId</code> comes from Figma.
     </p>
-    <textarea id="elements" spellcheck="false"></textarea>
+    <textarea id="elements" spellcheck="false" placeholder='[
+  { "figmaId": "hero", "nodeId": "11609:7477", "passes": ["geometry"] },
+  { "figmaId": "hero-heading", "nodeId": "11609:7480" }
+]'></textarea>
   </section>
 
   <section class="panel">
@@ -190,6 +193,9 @@ export const UI_HTML = `<!doctype html>
 
   function note(target, message, bad) {
     target.innerHTML = '<div class="note' + (bad ? ' bad' : '') + '">' + esc(message) + '</div>';
+    if (bad && target.scrollIntoView) {
+      target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }
 
   async function api(path, init) {
@@ -237,13 +243,47 @@ export const UI_HTML = `<!doctype html>
     } catch (err) {
       throw new Error('Elements is not valid JSON: ' + err.message);
     }
-    return {
+
+    var config = {
       url: $('url').value.trim(),
-      figmaFileKey: $('fileKey').value.trim(),
       section: $('section').value.trim(),
       viewport: { width: Number($('vw').value), height: Number($('vh').value) },
       elements: elements
     };
+
+    // Omit the key rather than send an empty one. An absent figmaFileKey falls
+    // back to FIGMA_FILE_KEY on the server; an empty string is a validation
+    // error, which would make a blank field fail even with the env var set.
+    var fileKey = $('fileKey').value.trim();
+    if (fileKey) config.figmaFileKey = fileKey;
+
+    return config;
+  }
+
+  /**
+   * Catch the mistakes worth catching before a round trip.
+   *
+   * The server validates with the same validateConfig() the CLI uses and its
+   * messages are good, but naming the field here is faster and the section
+   * rule in particular is not obvious until you have hit it.
+   */
+  function preflight(config) {
+    if (!config.url) return 'Enter the live URL to check.';
+    if (!config.section) {
+      return 'Enter the section container — the figmaId every element position is measured against.';
+    }
+    if (!Array.isArray(config.elements) || !config.elements.length) {
+      return 'Add at least one element. Browse layers below and click a row to add one.';
+    }
+    var bad = config.elements.filter(function (e) { return !e || !e.figmaId || !e.nodeId; });
+    if (bad.length) return 'Every element needs both a figmaId and a nodeId.';
+
+    var hasSection = config.elements.some(function (e) { return e.figmaId === config.section; });
+    if (!hasSection) {
+      return 'The section "' + config.section + '" must also appear in the elements list, ' +
+        'so its node id is known. Add it, or set the section to one of the elements you have.';
+    }
+    return null;
   }
 
   /* ---------- layers ---------- */
@@ -265,13 +305,22 @@ export const UI_HTML = `<!doctype html>
     }
   });
 
+  /**
+   * Rows rendered at once. A real design file is enormous — the file this was
+   * built against returns 8293 layers at depth 4 — and putting all of them in
+   * the DOM makes the page crawl for a list nobody can read anyway.
+   */
+  var ROW_LIMIT = 250;
+
   function renderLayers(data) {
     if (!data.rows.length) {
-      $('layers').innerHTML = '<p class="sub">No layers matched. Pages: ' +
+      $('layers').innerHTML = '<p class="sub">No layers matched. Pages in this file: ' +
         esc(data.pages.join(', ')) + '</p>';
       return;
     }
-    var rows = data.rows.map(function (row) {
+
+    var shown = data.rows.slice(0, ROW_LIMIT);
+    var rows = shown.map(function (row) {
       var size = row.width !== undefined
         ? Math.round(row.width) + '×' + Math.round(row.height) : '—';
       return '<tr class="pick" data-node="' + esc(row.nodeId) + '" data-name="' + esc(row.name) + '">' +
@@ -281,9 +330,16 @@ export const UI_HTML = `<!doctype html>
         '<td class="mono muted">' + size + '</td></tr>';
     }).join('');
 
+    var caption = esc(data.fileName) + ' — ' + data.rows.length + ' layers';
+    if (data.rows.length > ROW_LIMIT) {
+      caption += ', showing the first ' + ROW_LIMIT +
+        '. Narrow with a page, a name, or a smaller depth.';
+    } else {
+      caption += '. Click a row to add it to the elements above.';
+    }
+
     $('layers').innerHTML =
-      '<p class="sub" style="margin:12px 0 0">' + esc(data.fileName) + ' — ' +
-        data.rows.length + ' layers. Click a row to add it to the elements above.</p>' +
+      '<p class="sub" style="margin:12px 0 0">' + caption + '</p>' +
       '<div class="scroll"><table><thead><tr>' +
       '<th>node id</th><th>type</th><th>name</th><th>size</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
@@ -328,10 +384,14 @@ export const UI_HTML = `<!doctype html>
     $('results').innerHTML = '<p class="sub">Launching Chromium and fetching the design…</p>';
 
     try {
+      var config = currentConfig();
+      var problem = preflight(config);
+      if (problem) throw new Error(problem);
+
       var data = await api('/api/check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ config: currentConfig() })
+        body: JSON.stringify({ config: config })
       });
       renderReport(data.report);
     } catch (err) {
