@@ -7,8 +7,8 @@ _Last updated: 2026-09-14_
 | Status | Count |
 | --- | --- |
 | Done | 34 |
-| In Progress | 1 |
-| Todo | 21 |
+| In Progress | 2 |
+| Todo | 22 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
 [PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
@@ -18,11 +18,13 @@ of where things actually stand. This file is the task list.
 
 ## In Progress
 
-One item, **blocked on external input**, not mid-implementation. Nothing in the
-codebase is currently half-written — the engine is at a clean stopping point.
+Two items, both **blocked on external input**, not mid-implementation. Nothing
+in the codebase is currently half-written — the engine is at a clean stopping
+point.
 
 | ID | Task | Blocked on |
 | --- | --- | --- |
+| P-03 | **Decide which "Men's Basketball" frame is authoritative.** The file holds at least three nodes with that name: `11609:7477` (CANVAS, no bounding box, unusable), `11350:4869` (FRAME 1728×6537, 64 loose children) and `13020:20866` (FRAME 1728×5962, properly nested with six real section frames). The 575px difference means these are different revisions. **This blocks meaningful checking of this page** — a run against the wrong frame compares against a design nobody is building to | Whoever owns the design file |
 | P-01 | **Tag the WordPress theme.** Add `data-figma-id` to the hero elements in the theme templates. Slugs are chosen freely — they do not need to match Figma layer names. | You. Requires theme template access. Note this is now *optional*: selector pairing works and needs no deploy (see T-31) |
 
 P-02 is **done** — see [docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md).
@@ -61,6 +63,7 @@ Ordered by how much noise they remove. Full reasoning in
 | T-28 | **Prefer `fontStyle` over the raw numeric `fontWeight`** | Map the CSS weight-name table (Thin 100 … Black 900) and fall back to the number. Fixed lookup, not fuzzy matching — stays inside invariant 7. Fixes the `350` false positive while preserving the real Bold-vs-600 finding |
 | T-29 | **Do not compare box borders on a TEXT node** | A stroke on a text layer is a glyph outline (`-webkit-text-stroke`), not a `border`; the check can only ever fail. Downgrade to `info` **with a reason** — invariant 3 means it must not become silence |
 | T-30 | **Declared font-family aliases in the config** | Figma says `Gotham`, the theme says `"Hco Gotham"` — same typeface, foundry-prefixed name. Fires on every text element on every run. Needs an explicit user-declared alias map, never a fuzzy match |
+| T-32 | **Stop the UI defaulting to a `data-figma-id` selector on a page that has none** | Guarantees a `missingInLive` on the first run and reads as "the tool is broken" rather than "pick a selector". The probe already loads the page and can count `[data-figma-id]`; when it is zero, say so and require a selector instead of pre-filling one that cannot match |
 | T-31 | **Document the pairing traps in `docs/tagging.md`** | The 526px gap and the `backgroundColor` finding were both one bad pairing: `.wrap` excludes the header and footer that the frame draws. Also worth naming: this design file has pasted screenshots of the live site as layers, which must never be paired |
 
 ### Config authoring ergonomics

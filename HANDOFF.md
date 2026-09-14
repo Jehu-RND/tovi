@@ -111,6 +111,11 @@ one and says why, but the CLI will accept it and fail at run time.
 
 **2. The live site carries no `data-figma-id` attributes.**
 
+The UI still pre-fills that selector form, so a first run against a freshly
+picked layer fails with `missingInLive` and looks like a broken tool. It is not
+— nothing was compared, because nothing was found. Replace the pre-filled
+selector with a real one (T-32 removes the trap).
+
 Pairing is by CSS selector instead. That is fully supported and is how the runs
 above worked. The theme is unusually selector-friendly:
 
@@ -237,13 +242,24 @@ The first and fourth are answered. Two remain, and neither blocks the work.
    are not the same thing — a build may legitimately have overridden the design.
 4. ~~Does this branch merge to `main`?~~ **Merged.** All of it is on `main`.
 
-### One more thing worth knowing about the design file
+### The design file has at least three "Men's Basketball" nodes
 
-Frame `11350:4869` has 64 children and **almost no section containers** — loose
-rectangles, text and instances positioned absolutely. There is no Figma node
-corresponding to `.level-of-play`, `.superior-customization` or
-`.built-for-every-player`. Pairing on this page has to be text-to-text and
-instance-to-wrapper.
+This is now the biggest open question on the project (P-03), because it decides
+what a run is even comparing against:
+
+| Node | Size | Shape |
+| --- | --- | --- |
+| `11609:7477` | — | CANVAS. No bounding box, unusable |
+| `11350:4869` | 1728×6537 | 64 loose children, almost no section containers. **What triage 001 used** |
+| `13020:20866` | 1728×5962 | 2 children, properly nested — a header block and a content frame holding six real section frames |
+
+575px apart, so these are **different revisions**, not two views of one design.
+If the structured one is current, most of triage 001's noise disappears at the
+source. Nobody has established which is authoritative.
+
+Against `11350:4869`, pairing has to be text-to-text and instance-to-wrapper —
+there is no node corresponding to `.level-of-play`,
+`.superior-customization` or `.built-for-every-player`.
 
 Two of the frame's children are also **pasted screenshots of the existing site**
 (`Screenshot 2026-01-22…` 1728×105 at the top, `Screenshot 2026-01-08…`

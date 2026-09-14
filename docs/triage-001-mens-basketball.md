@@ -236,23 +236,54 @@ the single most misleading finding in the project's history (the 526px gap) are
 both pairing mistakes. The tool cannot currently tell you that pairing a
 hug-width text node to a full-bleed block is meaningless, and it should.
 
-**The design file is flatter than assumed.** Frame `11350:4869` has 64 children
-and almost no section containers — loose rectangles, text and instances
-positioned absolutely. There is no Figma node corresponding to
-`.level-of-play`, `.superior-customization` or `.built-for-every-player`. The
-handoff's suggestion to "pair a section with the matching Figma frame" is not
-possible for most sections of this page; pairing has to be text-to-text and
-instance-to-wrapper, which is what this run did.
+**The frame this run used is flat, and it was the wrong one to pick.** Frame
+`11350:4869` has 64 children and almost no section containers — loose
+rectangles, text and instances positioned absolutely, with no node
+corresponding to `.level-of-play`, `.superior-customization` or
+`.built-for-every-player`. Pairing against it has to be text-to-text and
+instance-to-wrapper, which is what this run did, and that is the direct cause
+of the largest noise class.
 
-Two of the frame's children are also pasted screenshots of the existing site
+Two of its children are also pasted screenshots of the existing site
 (`Screenshot 2026-01-22…` 1728×105 at the top, `Screenshot 2026-01-08…`
 1738×354 in the footer group) — designer scaffolding, not specification. They
 should never be paired against anything.
+
+**But the file contains a properly structured alternative**, found after this
+run while diagnosing an unrelated `missingInLive`. There are at least three
+nodes named "Men's Basketball":
+
+| Node | Type | Size | Shape |
+| --- | --- | --- | --- |
+| `11609:7477` | CANVAS | — | The page. No bounding box; unusable |
+| `11350:4869` | FRAME | 1728×6537 | 64 loose children. **What this run used** |
+| `13020:20866` | FRAME | 1728×5962 | 2 children, properly nested: a 276px header block and a 5614px content frame holding six real section frames |
+
+The 575px height difference means these are **different revisions**, not two
+views of one design. Which is authoritative cannot be determined from the API
+and needs whoever owns the design file.
+
+If `13020:20866` is current, most of this triage's noise disappears at the
+source: its sections are real frames with real boxes, so the box-shape
+mismatch class (8 of 35 findings) largely stops arising. A spot check against
+it paired `13020:21252` (hero, 1728×972) to `.wrap > div:nth-child(3)` — passed
+clean — and `13020:21026` (nav, 1728×72) to `#main-header`, which matched on
+both dimensions and produced seven substantive findings on padding, background
+and shadow rather than geometry noise.
+
+**This does not invalidate the triage above.** Every verdict in it is about
+findings that were genuinely produced and correctly reasoned, and the four noise
+classes are all real tool or authoring gaps regardless of which frame is used.
+What changes is the priority: picking the right frame may be worth more than
+T-27, and neither of those was on the board before.
 
 ---
 
 ## Still open
 
+- **Which "Men's Basketball" frame is authoritative** — `11350:4869` (flat,
+  6537) or `13020:20866` (structured, 5962). This is now the highest-value
+  open question, because it changes what a run is even comparing against.
 - **Which viewport is the source of truth**, 1728 or 1440. Unchanged from the
   handoff; this run used 1728 and the widths behaved.
 - **Whether the −8px heading sizes are intentional.** They are real, but "real"
