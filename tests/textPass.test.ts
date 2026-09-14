@@ -188,3 +188,57 @@ describe('diffText', () => {
     expect(issues[0]).toMatchObject({ property: 'missingInFigma', severity: 'error' });
   });
 });
+
+/**
+ * T-30. Figma names the typeface as the foundry did — `Gotham` — while the CSS
+ * that ships it says `"Hco Gotham"`. Same typeface, and without a declared
+ * alias it is a mismatch on every text element of every run.
+ */
+describe('declared font aliases', () => {
+  const aliases = { Gotham: '"Hco Gotham"' };
+
+  const pairWithFamilies = (design: string, live: string): ElementPair =>
+    pair({ fontFamily: design }, { fontFamily: live });
+
+  it('treats an aliased pair as the same typeface', () => {
+    const issues = diffText(
+      pairWithFamilies('Gotham', '"Hco Gotham", Helvetica, sans-serif'),
+      DEFAULT_TOLERANCES, undefined, aliases,
+    );
+    expect(issues.filter((i) => i.property === 'fontFamily')).toEqual([]);
+  });
+
+  it('matches whichever way round the alias was written', () => {
+    const issues = diffText(
+      pairWithFamilies('Gotham', '"Hco Gotham"'),
+      DEFAULT_TOLERANCES, undefined, { '"Hco Gotham"': 'Gotham' },
+    );
+    expect(issues.filter((i) => i.property === 'fontFamily')).toEqual([]);
+  });
+
+  it('still reports a genuinely different typeface', () => {
+    // An alias makes two names equal; it must not make all names equal.
+    const issues = diffText(
+      pairWithFamilies('Gotham', 'Comic Sans MS'),
+      DEFAULT_TOLERANCES, undefined, aliases,
+    );
+    expect(issues.filter((i) => i.property === 'fontFamily')).toHaveLength(1);
+  });
+
+  it('reports the mismatch when no alias is declared', () => {
+    const issues = diffText(
+      pairWithFamilies('Gotham', '"Hco Gotham"'),
+      DEFAULT_TOLERANCES,
+    );
+    expect(issues.filter((i) => i.property === 'fontFamily')).toHaveLength(1);
+  });
+
+  it('cannot mask a size or weight difference', () => {
+    // The alias is about names only. Everything else still compares.
+    const issues = diffText(
+      pair({ fontFamily: 'Gotham', fontSize: 48 }, { fontFamily: '"Hco Gotham"', fontSize: 40 }),
+      DEFAULT_TOLERANCES, undefined, aliases,
+    );
+    expect(issues.some((i) => i.property === 'fontSize')).toBe(true);
+  });
+});

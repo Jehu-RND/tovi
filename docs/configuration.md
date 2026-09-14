@@ -28,6 +28,7 @@ in [src/config/loadConfig.ts](../src/config/loadConfig.ts). A worked example is
 
 | Field | Required | Meaning |
 | --- | --- | --- |
+| `fontAliases` | no | Font names that mean the same typeface on each side. See below |
 | `figmaFileKey` | no | Figma file key. Falls back to `FIGMA_FILE_KEY` when omitted; the config value takes precedence when both are set |
 | `url` | **yes** | Live page to inspect |
 | `section` | **yes** | `figmaId` of the container every element's position is measured against |
@@ -237,3 +238,29 @@ Rules worth knowing before you hit them:
 - Every `relativeTo` must name one of the configured elements.
 - A file key must resolve from either `figmaFileKey` or `FIGMA_FILE_KEY`.
 - Strings are rejected when empty or whitespace-only, not just when absent.
+
+
+## `fontAliases`
+
+Figma names a typeface the way the foundry did — `Gotham` — while the CSS that
+ships it may say `"Hco Gotham"`. Same font, different string, and without this
+it is a `fontFamily` mismatch on **every text element of every run**.
+
+```json
+{
+  "fontAliases": {
+    "Gotham": "Hco Gotham"
+  }
+}
+```
+
+Both sides are normalized the same way the comparison is (first family in the
+stack, unquoted, lowercased), so `"Hco Gotham"` and `Hco Gotham` are the same
+key. The map is read in both directions, so it does not matter which name you
+put on the left.
+
+**An alias only makes two names equal.** It cannot mask a size, weight or
+spacing difference, and it cannot make unrelated fonts match — declaring
+`Gotham` → `Hco Gotham` still reports `Gotham` against `Comic Sans MS`. Writing
+one is a deliberate statement by whoever authors the config, which is what keeps
+it outside the fuzzy matching invariant 7 forbids.

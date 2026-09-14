@@ -289,10 +289,81 @@ export function extractTextSpec(style: Record<string, unknown> | undefined): Tex
   return {
     fontFamily,
     fontSize,
-    fontWeight: num(style, 'fontWeight') ?? Number.NaN,
+    fontWeight: resolveFontWeight(style),
     lineHeight: num(style, 'lineHeightPx') ?? Number.NaN,
     letterSpacing: num(style, 'letterSpacing') ?? 0,
   };
+}
+
+/**
+ * CSS weight names and their numeric equivalents, from CSS Fonts Level 4.
+ *
+ * A closed table of the names the spec actually defines. Anything outside it —
+ * a foundry's own naming like "Book" or "Roman" — is left to the numeric
+ * weight rather than guessed at, because a wrong mapping here invents a
+ * finding out of nothing.
+ */
+const CSS_WEIGHT_NAMES: Record<string, number> = {
+  thin: 100,
+  hairline: 100,
+  extralight: 200,
+  ultralight: 200,
+  light: 300,
+  normal: 400,
+  regular: 400,
+  medium: 500,
+  semibold: 600,
+  demibold: 600,
+  bold: 700,
+  extrabold: 800,
+  ultrabold: 800,
+  black: 900,
+  heavy: 900,
+};
+
+/**
+ * The CSS weight a Figma text style means.
+ *
+ * Figma reports `fontWeight` as the font's own weight axis value, which for a
+ * variable font is not a CSS weight at all: Gotham Medium comes back as `350`
+ * against a correct CSS `500`, so a zero tolerance flags every heading set in
+ * it. The same node also reports `fontStyle: "Medium"`, and Medium *is* 500 —
+ * the design said so in words, and the words are the reliable half.
+ *
+ * So the name wins when it is one CSS defines, and the number is the fallback.
+ * This is a fixed lookup, not a similarity match: a style name either is in the
+ * table or it is not, which keeps the comparison path free of heuristics
+ * (invariant 7).
+ *
+ * Deliberately narrow. It does not absorb a genuine weight mismatch — a node
+ * whose style is "Bold" still resolves to 700 and still fails against a live
+ * 600, which is the finding this must not hide.
+ */
+export function resolveFontWeight(style: Record<string, unknown>): number {
+  const named = cssWeightFromStyleName(str(style, 'fontStyle'));
+  if (named !== undefined) return named;
+  return num(style, 'fontWeight') ?? Number.NaN;
+}
+
+/**
+ * Map a Figma `fontStyle` string onto a CSS weight.
+ *
+ * Figma joins weight and slant into one string — "Bold", "SemiBold Italic",
+ * "Light Oblique" — so the slant words are dropped and the rest is matched
+ * against the table with spacing and case removed, since "SemiBold",
+ * "Semi Bold" and "semibold" are the same weight written three ways.
+ *
+ * @returns The numeric weight, or undefined when the name is not one CSS
+ *          defines — in which case the caller keeps Figma's number.
+ */
+export function cssWeightFromStyleName(fontStyle: string | undefined): number | undefined {
+  if (fontStyle === undefined) return undefined;
+  const key = fontStyle
+    .toLowerCase()
+    .replace(/italic|oblique/g, '')
+    .replace(/[^a-z]/g, '');
+  if (key === '') return undefined;
+  return CSS_WEIGHT_NAMES[key];
 }
 
 /**

@@ -279,6 +279,27 @@ T-27, and neither of those was on the board before.
 
 ---
 
+## What the fixes actually removed
+
+T-28, T-29 and T-30 are built. Re-running the exact config above, with a
+`fontAliases` entry for Gotham:
+
+| | errors |
+| --- | --- |
+| Original run | **35** |
+| − 4 border widths on a TEXT node (T-29) | 31 |
+| − 1 `fontWeight` 350-vs-500 (T-28) | 30 |
+| − 3 `fontFamily` Gotham-vs-Hco Gotham (T-30) | **27** |
+
+27 is exactly the 19 genuine findings plus the 8 box-shape errors, which is the
+one noise class still outstanding (T-27). The categorisation above predicted
+that number before any of it was written, which is the useful part.
+
+Every genuine finding survived. Both real `fontWeight` errors — design Bold/700
+against a live 600 — still report, and a test now pins that specifically,
+because a mapping that silenced them would have traded a false positive for a
+false negative.
+
 ## Still open
 
 - **Which "Men's Basketball" frame is authoritative** — `11350:4869` (flat,

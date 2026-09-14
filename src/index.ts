@@ -164,7 +164,7 @@ export function compareAll(
     const passes = passesFor(element);
 
     if (passes.text) {
-      issues.push(...diffText(pair, tolerances, checks));
+      issues.push(...diffText(pair, tolerances, checks, config.fontAliases));
     }
 
     if (passes.geometry) {

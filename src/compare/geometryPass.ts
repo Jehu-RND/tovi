@@ -62,7 +62,9 @@ import type {
 import type { Tolerances } from '../config/schema.js';
 import type { Check, Issue } from '../report/types.js';
 import { colorDistance, colorsMatch, formatColor } from './color.js';
-import { compareNumeric, notePass, noteIssue, structuralIssue, valueIssue } from './issues.js';
+import {
+  compareNumeric, notePass, noteIssue, round, structuralIssue, valueIssue,
+} from './issues.js';
 import type { Rgba } from '../types.js';
 
 const SIDES: Array<keyof BoxSides> = ['top', 'right', 'bottom', 'left'];
@@ -143,24 +145,41 @@ export function diffGeometry(
   }
 
   if (figma.borders !== undefined) {
-    issues.push(
-      ...diffBorders(figmaId, figma.borders, live.borders, tolerances.border,
-        tolerances.color, checks),
-    );
-
-    // CSS borders are always drawn inside the border box. A CENTER or OUTSIDE
-    // stroke is painted partly or wholly beyond the node's bounds, so the
-    // widths still compare but the box they imply does not — say so rather
-    // than letting a matching width read as a matching design.
-    if (figma.strokeAlign !== undefined && figma.strokeAlign !== 'INSIDE') {
-      const alignIssue = valueIssue(
-        figmaId, 'geometry', 'border', 'INSIDE (CSS border)', figma.strokeAlign, {
-          severity: 'info',
-          detail: 'strokeAlign',
-        },
+    // A stroke on a TEXT node is a glyph outline, not a box border. CSS spells
+    // that -webkit-text-stroke; `border` on the same element draws a rectangle
+    // around the text instead. Comparing the two is a category error that can
+    // only ever fail, so the widths are not compared — but the stroke is still
+    // reported, because invariant 3 forbids turning an uncomparable property
+    // into silence.
+    if (figma.type === 'TEXT') {
+      const outlineIssue = valueIssue(
+        figmaId, 'geometry', 'border',
+        `${describeStrokeWidths(figma.borders)} text outline (-webkit-text-stroke)`,
+        'not compared — CSS border draws a box, not a glyph outline',
+        { severity: 'info', detail: 'textStroke' },
       );
-      issues.push(alignIssue);
-      noteIssue(checks, alignIssue);
+      issues.push(outlineIssue);
+      noteIssue(checks, outlineIssue);
+    } else {
+      issues.push(
+        ...diffBorders(figmaId, figma.borders, live.borders, tolerances.border,
+          tolerances.color, checks),
+      );
+
+      // CSS borders are always drawn inside the border box. A CENTER or OUTSIDE
+      // stroke is painted partly or wholly beyond the node's bounds, so the
+      // widths still compare but the box they imply does not — say so rather
+      // than letting a matching width read as a matching design.
+      if (figma.strokeAlign !== undefined && figma.strokeAlign !== 'INSIDE') {
+        const alignIssue = valueIssue(
+          figmaId, 'geometry', 'border', 'INSIDE (CSS border)', figma.strokeAlign, {
+            severity: 'info',
+            detail: 'strokeAlign',
+          },
+        );
+        issues.push(alignIssue);
+        noteIssue(checks, alignIssue);
+      }
     }
   }
 
@@ -304,6 +323,16 @@ export function diffBorders(
   }
 
   return issues;
+}
+
+/**
+ * Describe a stroke's widths for the text-outline note, e.g. "1px" or
+ * "1/2/1/2px". One number when every side agrees, which is the usual case.
+ */
+function describeStrokeWidths(borders: Borders): string {
+  const widths = SIDES.map((side) => round(borders[side].width));
+  const uniform = widths.every((width) => width === widths[0]);
+  return uniform ? `${widths[0]}px` : `${widths.join('/')}px`;
 }
 
 /** Compare one color, reporting the perceptual distance as the delta. */

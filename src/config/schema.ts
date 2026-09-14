@@ -98,6 +98,25 @@ export interface ToviConfig {
   timeout?: number;
   /** Run-level defaults; each element may override individual entries. */
   tolerances: Tolerances;
+  /**
+   * Font families that name the same typeface on each side.
+   *
+   * Figma reports the family as the foundry named it — `Gotham` — while the
+   * CSS that ships it may say `"Hco Gotham"`. Same typeface, different string,
+   * and without this it is a mismatch on every text element of every run,
+   * which is the shape of noise that gets a tool ignored.
+   *
+   * A declared map, never a similarity match. Keys and values are compared
+   * after the same normalization the family comparison uses (first family in
+   * the stack, unquoted, lowercased), so `"Hco Gotham"` and `Hco Gotham` are
+   * the same key. Both directions are accepted, so it does not matter which
+   * side is written on the left.
+   *
+   * An alias only makes two names equal. It cannot mask a size, weight or
+   * spacing difference, and stating one is a deliberate act by whoever writes
+   * the config — which keeps this outside the heuristics invariant 7 forbids.
+   */
+  fontAliases?: Record<string, string>;
   elements: ElementConfig[];
 }
 

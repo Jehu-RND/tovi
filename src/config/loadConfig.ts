@@ -227,6 +227,8 @@ export function validateConfig(value: unknown, path?: string): ToviConfig {
     ...validateTolerances(value['tolerances'], 'config', path),
   };
 
+  const fontAliases = validateFontAliases(value['fontAliases'], path);
+
   // The token is never read from config; only the file key may live here, and
   // the environment can supply it instead.
   const figmaFileKey = optionalString(value, 'figmaFileKey', path) ?? process.env['FIGMA_FILE_KEY'];
@@ -240,7 +242,37 @@ export function validateConfig(value: unknown, path?: string): ToviConfig {
   return {
     figmaFileKey, url, section, viewport, tolerances, elements,
     ...(timeout !== undefined ? { timeout } : {}),
+    ...(fontAliases !== undefined ? { fontAliases } : {}),
   };
+}
+
+/**
+ * Validate the optional `fontAliases` map.
+ *
+ * Rejected rather than ignored when malformed: a typo here silently restores
+ * the noise the map exists to remove, and a config that looks like it declares
+ * an alias but does not is worse than one that never tried.
+ */
+function validateFontAliases(
+  raw: unknown,
+  path?: string,
+): Record<string, string> | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ConfigError('"fontAliases" must be an object mapping font name to font name', path);
+  }
+
+  const out: Record<string, string> = {};
+  for (const [key, alias] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof alias !== 'string' || alias.trim() === '') {
+      throw new ConfigError(`"fontAliases.${key}" must be a non-empty string`, path);
+    }
+    if (key.trim() === '') {
+      throw new ConfigError('"fontAliases" keys must not be empty', path);
+    }
+    out[key] = alias;
+  }
+  return out;
 }
 
 /**

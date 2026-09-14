@@ -313,3 +313,57 @@ describe('diffGeometry', () => {
     expect(issues[0]).toMatchObject({ property: 'missingInLive' });
   });
 });
+
+/**
+ * T-29. A stroke on a TEXT node is a glyph outline — CSS spells that
+ * -webkit-text-stroke, while `border` draws a rectangle around the text
+ * instead. Triage 001 produced four border errors from one such node, none of
+ * which a live element could ever have satisfied.
+ */
+describe('a stroke on a TEXT node is not a CSS border', () => {
+  /** A text layer carrying a 1px outline, as node 12576:8122 does. */
+  function outlinedText(type: string): ElementPair {
+    const pair = alignedPair();
+    return {
+      ...pair,
+      figma: {
+        ...pair.figma!,
+        type,
+        strokeAlign: 'OUTSIDE',
+        borders: {
+          top: { width: 1, color: { r: 0, g: 0, b: 0, a: 1 } },
+          right: { width: 1, color: { r: 0, g: 0, b: 0, a: 1 } },
+          bottom: { width: 1, color: { r: 0, g: 0, b: 0, a: 1 } },
+          left: { width: 1, color: { r: 0, g: 0, b: 0, a: 1 } },
+        },
+      },
+    };
+  }
+
+  it('raises no border-width errors for a TEXT node', () => {
+    const issues = diffGeometry(outlinedText('TEXT'), section, DEFAULT_TOLERANCES);
+    const widthErrors = issues.filter(
+      (i) => i.property === 'border' && i.severity === 'error',
+    );
+    expect(widthErrors).toEqual([]);
+  });
+
+  it('still reports the outline, rather than going silent', () => {
+    // Invariant 3: an uncomparable property must never read as a passing one.
+    const issues = diffGeometry(outlinedText('TEXT'), section, DEFAULT_TOLERANCES);
+    const note = issues.find((i) => i.property === 'border');
+    expect(note?.severity).toBe('info');
+    expect(note?.expected).toContain('text outline');
+    expect(note?.detail).toBe('textStroke');
+    expect(note?.expected).toContain('-webkit-text-stroke');
+  });
+
+  it('still compares borders on a non-TEXT node', () => {
+    // The narrow fix must not turn into "stop comparing borders".
+    const issues = diffGeometry(outlinedText('RECTANGLE'), section, DEFAULT_TOLERANCES);
+    const widthErrors = issues.filter(
+      (i) => i.property === 'border' && i.severity === 'error',
+    );
+    expect(widthErrors).toHaveLength(4);
+  });
+});

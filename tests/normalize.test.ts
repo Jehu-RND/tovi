@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  cssWeightFromStyleName,
   extractCornerRadius,
   extractPadding,
   extractShadows,
@@ -249,5 +250,58 @@ describe('normalizeFigmaNode', () => {
   it('throws for a node with no bounding box', () => {
     const bare: RawFigmaNode = { id: '1:9', name: 'ghost', type: 'FRAME' };
     expect(() => normalizeFigmaNode(bare, 'ghost')).toThrow(/absoluteBoundingBox/);
+  });
+});
+
+/**
+ * T-28. Figma reports a variable font's weight axis value, not a CSS weight:
+ * Gotham Medium comes back as 350 against a correct CSS 500, so a zero
+ * tolerance flagged every heading set in it. The style name is the reliable
+ * half — and the mapping must not swallow a genuine weight mismatch.
+ */
+describe('font weight resolves from the style name', () => {
+  const style = (fontStyle: string, fontWeight: number): Record<string, unknown> => ({
+    fontFamily: 'Gotham', fontSize: 32, fontStyle, fontWeight,
+  });
+
+  it('prefers the CSS weight name over Figma\'s axis value', () => {
+    // The exact case from triage 001: node 12576:8124.
+    expect(extractTextSpec(style('Medium', 350))?.fontWeight).toBe(500);
+  });
+
+  it('still reports Bold as 700, so a real 700-vs-600 defect survives', () => {
+    // Node 12576:8122. If the mapping hid this, it would have traded a false
+    // positive for a false negative, which is the worse trade.
+    expect(extractTextSpec(style('Bold', 700))?.fontWeight).toBe(700);
+  });
+
+  it('maps every weight name CSS defines', () => {
+    const cases: Array<[string, number]> = [
+      ['Thin', 100], ['Hairline', 100], ['ExtraLight', 200], ['UltraLight', 200],
+      ['Light', 300], ['Regular', 400], ['Normal', 400], ['Medium', 500],
+      ['SemiBold', 600], ['DemiBold', 600], ['Bold', 700],
+      ['ExtraBold', 800], ['UltraBold', 800], ['Black', 900], ['Heavy', 900],
+    ];
+    for (const [name, weight] of cases) {
+      expect(cssWeightFromStyleName(name), name).toBe(weight);
+    }
+  });
+
+  it('ignores slant, spacing and case', () => {
+    expect(cssWeightFromStyleName('SemiBold Italic')).toBe(600);
+    expect(cssWeightFromStyleName('semi bold')).toBe(600);
+    expect(cssWeightFromStyleName('Light Oblique')).toBe(300);
+  });
+
+  it('falls back to the number for a name CSS does not define', () => {
+    // "Book" is a foundry's own naming with no defined CSS equivalent.
+    // Guessing at it would invent a finding out of nothing.
+    expect(cssWeightFromStyleName('Book')).toBeUndefined();
+    expect(extractTextSpec(style('Book', 325))?.fontWeight).toBe(325);
+  });
+
+  it('falls back to the number when there is no style name at all', () => {
+    expect(extractTextSpec({ fontFamily: 'Inter', fontSize: 16, fontWeight: 450 })?.fontWeight)
+      .toBe(450);
   });
 });

@@ -6,9 +6,9 @@ _Last updated: 2026-09-14_
 
 | Status | Count |
 | --- | --- |
-| Done | 41 |
+| Done | 44 |
 | In Progress | 2 |
-| Todo | 21 |
+| Todo | 18 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
 [PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
@@ -60,10 +60,9 @@ Ordered by how much noise they remove. Full reasoning in
 | ID | Task | Notes |
 | --- | --- | --- |
 | T-27 | **Warn when a text node's box is not a layout box** | Part of the largest noise class (8 of 35 findings). A Figma TEXT node with `textAutoResize: WIDTH_AND_HEIGHT` hugs its glyphs, so comparing its width/offsetX to a block-level element is meaningless. `textAutoResize` is already in the API response. Warn at config-load or probe time — an authoring guard, not a comparison change |
-| T-28 | **Prefer `fontStyle` over the raw numeric `fontWeight`** | Map the CSS weight-name table (Thin 100 … Black 900) and fall back to the number. Fixed lookup, not fuzzy matching — stays inside invariant 7. Fixes the `350` false positive while preserving the real Bold-vs-600 finding |
-| T-29 | **Do not compare box borders on a TEXT node** | A stroke on a text layer is a glyph outline (`-webkit-text-stroke`), not a `border`; the check can only ever fail. Downgrade to `info` **with a reason** — invariant 3 means it must not become silence |
-| T-30 | **Declared font-family aliases in the config** | Figma says `Gotham`, the theme says `"Hco Gotham"` — same typeface, foundry-prefixed name. Fires on every text element on every run. Needs an explicit user-declared alias map, never a fuzzy match |
-| ~~T-32~~ | ~~Stop the UI defaulting to a `data-figma-id` selector on a page that has none~~ | **Done.** The UI now resolves each layer against the page itself — attribute, then class, then id, adopting whichever matches exactly one element — debounced so a burst of picks costs one page load. An edited selector is never rewritten. Verified against a React app built from a Figma frame: 8 of 9 layers resolved with no selector work, and the run passed 6/6 |
+| ~~T-28~~ | ~~Prefer `fontStyle` over the raw numeric `fontWeight`~~ | **Done.** A closed CSS Fonts Level 4 name table; slant, spacing and case ignored; a name outside it (a foundry's `Book`) falls back to Figma's number. Killed the Gotham `350` false positive and left the genuine Bold-700-vs-600 finding standing, pinned by a test |
+| ~~T-29~~ | ~~Do not compare box borders on a TEXT node~~ | **Done.** Widths are no longer compared on a TEXT node; the stroke is reported as `info` naming `-webkit-text-stroke`, so it never becomes silence. Borders on every other node type compare exactly as before, pinned by a test |
+| ~~T-30~~ | ~~Declared font-family aliases in the config~~ | **Done.** `fontAliases` in the config, read in both directions, normalized the same way the comparison is. Only makes two *names* equal — it cannot mask a size or weight difference, and unrelated fonts still report |
 | T-31 | **Document the pairing traps in `docs/tagging.md`** | The 526px gap and the `backgroundColor` finding were both one bad pairing: `.wrap` excludes the header and footer that the frame draws. Also worth naming: this design file has pasted screenshots of the live site as layers, which must never be paired |
 
 ### Config authoring ergonomics

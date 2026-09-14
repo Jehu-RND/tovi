@@ -53,6 +53,7 @@ export function diffText(
   pair: ElementPair,
   tolerances: Tolerances,
   checks?: Check[],
+  fontAliases?: Record<string, string>,
 ): Issue[] {
   if (pair.figma === undefined) {
     return [structuralIssue(pair.figmaId, 'text', 'missingInFigma')];
@@ -76,7 +77,7 @@ export function diffText(
   if (comparable.has('fontFamily')) {
     const expectedFamily = normalizeFontFamily(expected.fontFamily);
     const actualFamily = normalizeFontFamily(actual.fontFamily);
-    if (expectedFamily !== actualFamily) {
+    if (!familiesMatch(expectedFamily, actualFamily, fontAliases)) {
       const familyIssue = valueIssue(
         figmaId, 'text', 'fontFamily', expected.fontFamily, actual.fontFamily,
       );
@@ -138,6 +139,31 @@ export function diffText(
   }
 
   return issues;
+}
+
+/**
+ * Whether two normalized family names refer to the same typeface.
+ *
+ * Equal strings match. Beyond that, only a declared alias does: the config's
+ * `fontAliases` map is consulted in both directions, so it does not matter
+ * which side of the pair was written on the left. No similarity matching, no
+ * prefix stripping — `Gotham` and `Hco Gotham` are the same typeface only
+ * because someone said so, which is what keeps this deterministic.
+ */
+export function familiesMatch(
+  expected: string,
+  actual: string,
+  aliases?: Record<string, string>,
+): boolean {
+  if (expected === actual) return true;
+  if (aliases === undefined) return false;
+
+  for (const [from, to] of Object.entries(aliases)) {
+    const a = normalizeFontFamily(from);
+    const b = normalizeFontFamily(to);
+    if ((a === expected && b === actual) || (a === actual && b === expected)) return true;
+  }
+  return false;
 }
 
 /**

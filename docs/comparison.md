@@ -306,3 +306,52 @@ These are known, documented gaps — not bugs.
 | **Real gradients** | Only flat ones compare |
 | **Per-run text styling** | Text compares per element against the node's dominant style, so a paragraph with mixed styling compares against one of them |
 | **Responsive behaviour** | One viewport per run; a second breakpoint needs a second config |
+
+
+## Two comparisons that are deliberately not made
+
+Both come from triage 001, and both replace a check that could only ever fail
+with a note that says why — never with silence, which invariant 3 forbids.
+
+### A stroke on a TEXT node
+
+A stroke on a text layer is a glyph outline. Its CSS equivalent is
+`-webkit-text-stroke`; `border` on the same element draws a rectangle around the
+text instead. Comparing the two is a category error, so the widths are not
+compared and the stroke is reported as `info`:
+
+```
+info  heading  border.textStroke  expected 1px text outline (-webkit-text-stroke)
+                                  actual not compared — CSS border draws a box…
+```
+
+Borders on every other node type compare exactly as before.
+
+### `fontWeight` when the style has a name
+
+Figma reports `fontWeight` as the font's own weight-axis value, which for a
+variable font is not a CSS weight: Gotham Medium comes back as `350` against a
+correct CSS `500`. The same node also reports `fontStyle: "Medium"`, and Medium
+*is* 500 — so the **name wins when CSS defines it**, and the number is the
+fallback.
+
+| `fontStyle` | CSS weight |
+| --- | --- |
+| Thin, Hairline | 100 |
+| ExtraLight, UltraLight | 200 |
+| Light | 300 |
+| Regular, Normal | 400 |
+| Medium | 500 |
+| SemiBold, DemiBold | 600 |
+| Bold | 700 |
+| ExtraBold, UltraBold | 800 |
+| Black, Heavy | 900 |
+
+Slant words are dropped, and spacing and case are ignored, so `SemiBold Italic`,
+`semi bold` and `SemiBold` all resolve to 600. A name outside the table — a
+foundry's own `Book` or `Roman` — falls back to Figma's number rather than being
+guessed at.
+
+This narrows nothing else: a node whose style is `Bold` still resolves to 700
+and still fails against a live `600`. That is the finding the mapping must not
+hide, and a test pins it.
