@@ -42,7 +42,19 @@ export interface RawFigmaNode {
   absoluteBoundingBox?: Rect;
   /** 0–1 float RGBA fills; may include gradients TOVI ignores. */
   fills?: unknown[];
+  /** Stroke paints. Same paint shape as `fills`. */
   strokes?: unknown[];
+  /** Uniform stroke weight in px. Figma omits it on a node with no stroke. */
+  strokeWeight?: number;
+  /** "INSIDE" | "OUTSIDE" | "CENTER". Only INSIDE maps onto a CSS border. */
+  strokeAlign?: string;
+  /** Per-side stroke weights, set when a node overrides the uniform weight. */
+  individualStrokeWeights?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
   effects?: unknown[];
   cornerRadius?: number;
   rectangleCornerRadii?: [number, number, number, number];
@@ -56,6 +68,14 @@ export interface RawFigmaNode {
   [key: string]: unknown;
 }
 
+/** The shape of `GET /v1/files/:key` that TOVI reads. */
+export interface FigmaFile {
+  /** The file's own name, as shown in Figma. */
+  name: string;
+  /** Root DOCUMENT node; its children are the file's pages (CANVAS nodes). */
+  document: RawFigmaNode;
+}
+
 /** Client bound to one file key and one token. */
 export interface FigmaClient {
   /**
@@ -65,6 +85,16 @@ export interface FigmaClient {
    *          the map rather than present-and-null, so callers must check.
    */
   getNodes(nodeIds: string[]): Promise<Map<string, RawFigmaNode>>;
+
+  /**
+   * Fetch the file's layer tree, for discovering node ids.
+   *
+   * @param depth How many levels below the document root to return. Figma
+   *              returns the ENTIRE file when this is omitted, which on a real
+   *              design file is tens of megabytes — so callers should always
+   *              pass one.
+   */
+  getFile(depth?: number): Promise<FigmaFile>;
 }
 
 /**
@@ -172,6 +202,20 @@ export function createFigmaClient(fileKey: string, token?: string): FigmaClient 
   }
 
   return {
+    async getFile(depth?: number): Promise<FigmaFile> {
+      const query = depth === undefined ? '' : `?depth=${encodeURIComponent(String(depth))}`;
+      const payload = await request(`${FIGMA_API_BASE}/files/${encodeURIComponent(fileKey)}${query}`);
+
+      const file = payload as { name?: unknown; document?: RawFigmaNode } | null;
+      if (file?.document === undefined || file.document === null) {
+        throw new FigmaApiError('Figma response did not contain a "document" node.');
+      }
+      return {
+        name: typeof file.name === 'string' ? file.name : fileKey,
+        document: file.document,
+      };
+    },
+
     async getNodes(nodeIds: string[]): Promise<Map<string, RawFigmaNode>> {
       const result = new Map<string, RawFigmaNode>();
       if (nodeIds.length === 0) return result;

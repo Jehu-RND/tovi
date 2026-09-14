@@ -130,12 +130,22 @@ It either matches or it does not.
 
 A property is compared only when it is **usable on both sides** — a non-empty
 string, or a finite number. This is what keeps `line-height: normal` from
-surfacing as a confident-looking failure: the browser reports it as `NaN`, so
-the property is dropped from the comparison entirely.
+surfacing as a confident-looking failure: the browser reports it as `NaN`, so it
+cannot be compared against a number.
 
-That is a deliberate gap, not an oversight: `normal` is font-dependent, so there
-is no honest number to compare it against. See
-[troubleshooting.md](troubleshooting.md#line-height-normal-is-never-flagged).
+But a skipped property is **reported, not dropped**. Each one emits an
+`info`-severity `skipped` issue whose `detail` says which property and why:
+
+```
+info  hero-heading  skipped  expected lineHeight compared  actual lineHeight skipped
+      detail: line-height is `normal` on the live element — font-dependent,
+              so there is no honest number to compare
+```
+
+Silence would be indistinguishable from a pass, which is the one thing this tool
+must never do. The skip never fails a run; it is context for reading the rest.
+
+Set an explicit `line-height` in CSS if you want it actually compared.
 
 ### Copy drift
 
@@ -164,6 +174,7 @@ Compares Figma spec values against `getBoundingClientRect()` +
 | position | `offsetX`, `offsetY` | `position` |
 | padding | one `padding` per drifting side | `padding` |
 | corner radius | one `cornerRadius` per drifting corner | `cornerRadius` |
+| border | one `border` per drifting side, width and colour | `border`, `color` |
 | background fill | `backgroundColor` | `color` |
 | text color | `color` | `color` |
 | shadows | one `shadow` per drifting layer | `shadow`, `color` |
@@ -182,6 +193,40 @@ so adjacent corners cannot overlap — at half the shorter side — so a 40px ra
 specified on a 48px-tall pill renders as 24px. That is the browser agreeing with
 the design, not drifting from it, so TOVI clamps the design value the same way
 rather than reporting a 16px failure on every pill.
+
+### Borders
+
+Figma models a stroke as **paints plus a weight**, where the paints apply to the
+whole node and only the weight may vary per side (`individualStrokeWeights`).
+CSS varies both. Both normalize into a per-side `{ width, color }`, with Figma's
+single stroke colour repeated across all four sides.
+
+Width is compared on every side, against the `border` tolerance. Colour is
+compared against the `color` tolerance, but **only where a border is actually
+drawn on both sides** — CSS reports a colour for a zero-width border (usually
+`currentColor` resolved against the text), and flagging that would report a
+mismatch on an element with no visible border at all.
+
+Issues carry a `detail` of `<side>.width` or `<side>.color`.
+
+A stroke with no explicit weight is read as **1px**, which is how Figma draws it.
+A stroke whose every side is zero-width is treated as no stroke at all.
+
+#### `strokeAlign` has no full CSS equivalent
+
+CSS borders are always drawn **inside** the border box. Figma's `strokeAlign`
+has three values, and only one of them matches:
+
+| `strokeAlign` | CSS equivalent |
+| --- | --- |
+| `INSIDE` | `border` — the widths and the box both correspond |
+| `CENTER` | none — half the stroke is painted outside the node's bounds |
+| `OUTSIDE` | none — the whole stroke is painted outside |
+
+Widths still compare under `CENTER` and `OUTSIDE`, but the box they imply does
+not. Rather than let a matching width read as a matching design, Pass A emits an
+`info`-severity issue with a `detail` of `strokeAlign` naming the alignment. It
+never fails a run — it is context for reading the other numbers.
 
 ### Shadows
 
@@ -257,8 +302,7 @@ These are known, documented gaps — not bugs.
 
 | Gap | Why it matters |
 | --- | --- |
-| **Borders / strokes** | An outline button — no fill, all `stroke` — has its box checked but not what makes it look like a button |
-| **`line-height: normal`** | Skipped, not flagged. Font-dependent, so no honest number exists |
+| **`line-height: normal`** | Cannot be compared — font-dependent, so no honest number exists. Reported as an info skip rather than silently dropped |
 | **Real gradients** | Only flat ones compare |
 | **Per-run text styling** | Text compares per element against the node's dominant style, so a paragraph with mixed styling compares against one of them |
 | **Responsive behaviour** | One viewport per run; a second breakpoint needs a second config |

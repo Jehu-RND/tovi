@@ -73,6 +73,13 @@ describe('normalizeLiveStyles', () => {
       boundingRect: { x: 120, y: 176, width: 180, height: 48 },
       padding: { top: 12, right: 24, bottom: 12, left: 24 },
       cornerRadius: { topLeft: 8, topRight: 8, bottomRight: 8, bottomLeft: 8 },
+      borderWidths: { top: 0, right: 0, bottom: 0, left: 0 },
+      borderColors: {
+        top: 'rgb(0, 0, 0)',
+        right: 'rgb(0, 0, 0)',
+        bottom: 'rgb(0, 0, 0)',
+        left: 'rgb(0, 0, 0)',
+      },
       backgroundColor: 'rgb(0, 102, 255)',
       color: 'rgb(255, 255, 255)',
       boxShadow: 'none',

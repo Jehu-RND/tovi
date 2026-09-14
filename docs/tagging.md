@@ -47,10 +47,49 @@ https://www.figma.com/design/AbCdEf.../Page?node-id=1-23
 TOVI accepts either spelling — `1-23` from the URL, or `1:23` as the API keys
 it. They are normalized to the same thing.
 
-> Config is currently hand-authored: every `figmaId` → `nodeId` pair is typed by
-> hand. On a large page this is genuinely tedious and a real typo surface. A
-> `tovi layers` discovery command is the next planned piece of work — see
-> [PROGRESS.md](../PROGRESS.md).
+### Or list them all at once
+
+Copying ids one at a time is tedious and a real typo surface. `tovi layers`
+dumps them:
+
+```bash
+node dist/index.js layers --page "Men's Basketball" --depth 3
+```
+
+```
+Sport-Specific Landing Page  —  6 layers
+
+  1:1         CANVAS     Men's Basketball                              1728×980
+  1:20        FRAME        hero                                        1728×980
+  1:21        TEXT           eyebrow                                    240×24
+  1:23        TEXT           Ship faster                                960×72
+  1:45        INSTANCE       Button                                     180×48
+  1:99        FRAME        Frame 31306                                  400×200
+```
+
+Indentation mirrors the layers panel, so a row can be found by scrolling to
+where the layer sits. The node id comes first because that is what gets copied.
+
+| Flag | Meaning |
+| --- | --- |
+| `-f, --file <key>` | Figma file key. Defaults to `FIGMA_FILE_KEY` |
+| `-p, --page <name>` | Restrict to one page. An exact name wins over a substring |
+| `-s, --search <text>` | Only layers whose name contains this |
+| `-t, --type <types>` | Comma-separated node types, e.g. `FRAME,TEXT` |
+| `-d, --depth <n>` | How deep to descend below a page. Default `4` |
+| `-j, --json <path>` | Write the rows as JSON |
+
+It deliberately does **not** read `tovi.config.json` — discovery is what you do
+*before* you have a config, so requiring one would be backwards. It only needs
+`FIGMA_TOKEN` and a file key.
+
+Two things worth knowing:
+
+- **Always pass a sensible `--depth`.** Figma returns the entire file when no
+  depth is given, which on a real design file is tens of megabytes.
+- **An exact page name beats a substring.** This matters more than it sounds:
+  "Women's Soccer" *contains* "Men's", so a loose match alone would silently
+  pull in the wrong page.
 
 ## Choosing slugs
 

@@ -1,9 +1,9 @@
 /**
  * TOVI — Pass A: geometry & spec.
  *
- * Compares size, position, padding, corner radius, color, and shadow between
- * the Figma Dev Mode spec values and the live element's getBoundingClientRect
- * + getComputedStyle output.
+ * Compares size, position, padding, corner radius, border, color, and shadow
+ * between the Figma Dev Mode spec values and the live element's
+ * getBoundingClientRect + getComputedStyle output.
  *
  * ====================================================================
  * COORDINATE NORMALIZATION — read before changing anything here.
@@ -51,6 +51,7 @@
  */
 
 import type {
+  Borders,
   BoxSides,
   CornerRadius,
   ElementPair,
@@ -138,6 +139,25 @@ export function diffGeometry(
     );
   }
 
+  if (figma.borders !== undefined) {
+    issues.push(
+      ...diffBorders(figmaId, figma.borders, live.borders, tolerances.border, tolerances.color),
+    );
+
+    // CSS borders are always drawn inside the border box. A CENTER or OUTSIDE
+    // stroke is painted partly or wholly beyond the node's bounds, so the
+    // widths still compare but the box they imply does not — say so rather
+    // than letting a matching width read as a matching design.
+    if (figma.strokeAlign !== undefined && figma.strokeAlign !== 'INSIDE') {
+      issues.push(
+        valueIssue(figmaId, 'geometry', 'border', 'INSIDE (CSS border)', figma.strokeAlign, {
+          severity: 'info',
+          detail: 'strokeAlign',
+        }),
+      );
+    }
+  }
+
   if (figma.backgroundColor !== undefined) {
     const issue = diffColor(
       figmaId, 'backgroundColor', figma.backgroundColor, live.backgroundColor, tolerances.color,
@@ -220,6 +240,51 @@ export function diffCornerRadius(
     );
     if (issue !== undefined) issues.push(issue);
   }
+  return issues;
+}
+
+/**
+ * Compare borders side by side.
+ *
+ * Width is compared on every side. Colour is compared only where a border is
+ * actually drawn on both sides: CSS reports a colour for a border of zero
+ * width — usually `currentColor` resolved against the text — and flagging that
+ * would report a colour mismatch on an element that has no visible border at
+ * all.
+ */
+export function diffBorders(
+  figmaId: string,
+  expected: Borders,
+  actual: Borders,
+  tolerance: number,
+  colorTolerance: number,
+): Issue[] {
+  const issues: Issue[] = [];
+
+  for (const side of SIDES) {
+    const want = expected[side];
+    const got = actual[side];
+
+    const width = compareNumeric(
+      figmaId, 'geometry', 'border', want.width, got.width, tolerance,
+      { detail: `${side}.width` },
+    );
+    if (width !== undefined) issues.push(width);
+
+    if (want.width > 0 && got.width > 0 && !colorsMatch(want.color, got.color, colorTolerance)) {
+      issues.push(
+        valueIssue(
+          figmaId, 'geometry', 'border', formatColor(want.color), formatColor(got.color),
+          {
+            delta: colorDistance(want.color, got.color),
+            tolerance: colorTolerance,
+            detail: `${side}.color`,
+          },
+        ),
+      );
+    }
+  }
+
   return issues;
 }
 

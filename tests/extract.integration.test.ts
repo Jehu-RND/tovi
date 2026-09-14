@@ -45,6 +45,20 @@ describe.skipIf(!hasChromium)('extractLiveStyles', () => {
     });
   }, 60_000);
 
+  it('reads per-side border width and colour from a real computed style', () => {
+    const cta = result.styles.get('hero-cta');
+    expect(cta?.borders.top).toEqual({ width: 2, color: { r: 0, g: 51, b: 153, a: 1 } });
+    expect(cta?.borders.left.width).toBe(2);
+  });
+
+  it('reports zero-width borders for an element that has none', () => {
+    // Computed border-width is already 0 when border-style is none, so the
+    // style keyword needs no separate check in the browser half.
+    const heading = result.styles.get('hero-heading');
+    expect(heading?.borders.top.width).toBe(0);
+    expect(heading?.borders.bottom.width).toBe(0);
+  });
+
   it('reports an element that is not on the page as missing, without throwing', () => {
     expect(result.missing).toEqual(['hero-nope']);
   });

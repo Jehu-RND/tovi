@@ -38,6 +38,8 @@ Shared domain types live in [src/types.ts](../src/types.ts); report types in
 | [compare/geometryPass.ts](../src/compare/geometryPass.ts) | 315 | Pass A — section-relative normalization |
 | [report/merge.ts](../src/report/merge.ts) | 162 | Grouping, counters, deterministic ordering |
 | [report/html.ts](../src/report/html.ts) | 246 | Self-contained HTML + text summary |
+| [ui/server.ts](../src/ui/server.ts) | 240 | Local UI server; loopback only, token stays server-side |
+| [ui/page.ts](../src/ui/page.ts) | 400 | The UI's single page, as a string (tsc copies no assets) |
 
 ## The stage contracts
 
@@ -93,6 +95,17 @@ belongs in a normalizer instead.
 5. **Report.** `buildRunReport()` groups issues by element and computes counters;
    `renderHtmlReport()` / `renderTextSummary()` render. Exit code comes from
    `report.status`.
+
+### One pipeline, two front ends
+
+`executeRun()` is the whole comparison — fetch, extract, compare, group — with
+none of the CLI's output handling. `runCheck()` wraps it for the terminal and
+the UI server calls it directly, so a run started from either produces
+byte-identical results.
+
+Any new surface that wants to run a check goes through `executeRun()`. A
+parallel copy would give two answers to the same question, which is the one
+thing this tool exists not to do.
 
 ### Structural short-circuiting
 

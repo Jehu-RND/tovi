@@ -78,7 +78,7 @@ rest of that element's comparison.
 | `missingInFigma` | The node id returned nothing, or could not be normalized | A wrong `nodeId`, or a layer deleted from the file |
 | `missingInLive` | The selector matched nothing | A missing `data-figma-id`, or content that did not render |
 | `ambiguousInLive` | The selector matched more than one element | The same tag on a repeated component — narrow it with `selector` |
-| `skipped` | A comparison did not run | The section container was unavailable on one side |
+| `skipped` | A comparison did not run | Geometry: the section container was unavailable on one side. Text: a property neither side reports comparably, most often `line-height: normal` |
 
 TOVI never picks one element out of an ambiguous match. Guessing would attribute
 a delta to an element you did not mean and send you editing the wrong rule.
@@ -147,8 +147,9 @@ becomes insertion-dependent.
 npm run check -- -c tovi.config.json -r out/report.html
 ```
 
-A single self-contained file: inline CSS, no external assets, no CDN scripts. It
-opens from disk with no network, which is what makes it usable as a CI artifact.
+A single self-contained file: inline CSS, no external assets, no CDN scripts, and
+the screenshot embedded as a `data:` URI. It opens from disk with no network,
+which is what makes it usable as a CI artifact.
 
 It shows, per element, the property, expected value, actual value, and the delta
 alongside the tolerance it was tested against — so a reader can see *why* a line
@@ -163,8 +164,15 @@ content from a live page; both are treated as untrusted input.
 npm run check -- -c tovi.config.json -r out/report.html -s out/page.png
 ```
 
-The report **links** the screenshot by path; it does not embed it. Keep the
-image next to the HTML when archiving.
+The capture is **embedded** into the report as a `data:` URI and rendered at the
+bottom, so the HTML stays a genuine single file — one artifact to attach to a PR
+or archive, with no image to lose alongside it.
+
+Captures over **4MB** are not embedded: base64 inflates a file by about a third,
+and a full-page capture of a long page gets there easily, past which the report
+becomes something browsers struggle to open. Over the cap the report names the
+path instead and the CLI prints a note saying so, so a missing capture is never
+silent.
 
 ## Text summary
 

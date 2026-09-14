@@ -45,6 +45,41 @@ export interface CornerRadius {
   bottomLeft: Px;
 }
 
+/**
+ * One side's border: how thick it is and what colour it is painted in.
+ *
+ * A width of 0 means no border on that side, and its colour is then
+ * meaningless — CSS still reports a colour for a border that is not drawn.
+ */
+export interface BorderSide {
+  width: Px;
+  color: Rgba;
+}
+
+/**
+ * Per-side borders. Figma strokes and CSS borders both normalize into this.
+ *
+ * Figma paints one stroke colour for the whole node and may vary the weight
+ * per side; CSS can vary both. The shared shape carries both per side so
+ * neither source has to be special-cased downstream.
+ */
+export interface Borders {
+  top: BorderSide;
+  right: BorderSide;
+  bottom: BorderSide;
+  left: BorderSide;
+}
+
+/**
+ * How Figma aligns a stroke to the node's edge.
+ *
+ * Only INSIDE corresponds to a CSS border, which is always drawn inside the
+ * border box. CENTER and OUTSIDE paint beyond the node's bounds, so widths
+ * still compare but the box they imply does not — Pass A says so rather than
+ * reporting a confident match.
+ */
+export type StrokeAlign = 'INSIDE' | 'OUTSIDE' | 'CENTER';
+
 /** A single drop/inner shadow layer. */
 export interface Shadow {
   offsetX: Px;
@@ -113,6 +148,13 @@ export interface FigmaSpec {
 
   padding?: BoxSides;
   cornerRadius?: CornerRadius;
+  /**
+   * Stroke, normalized per side. Absent when the node has no visible stroke —
+   * which is not an assertion that the live element must have no border.
+   */
+  borders?: Borders;
+  /** Present only alongside `borders`. See StrokeAlign. */
+  strokeAlign?: StrokeAlign;
   /** First visible solid fill, normalized. Gradients are out of scope for v1. */
   backgroundColor?: Rgba;
   /** Text color for TEXT nodes. */
@@ -145,6 +187,8 @@ export interface LiveStyles {
 
   padding: BoxSides;
   cornerRadius: CornerRadius;
+  /** Computed per-side border width and colour. Width is 0 when none is drawn. */
+  borders: Borders;
   backgroundColor: Rgba;
   color: Rgba;
   shadows: Shadow[];

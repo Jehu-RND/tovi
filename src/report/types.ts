@@ -36,6 +36,7 @@ export type IssueProperty =
   | 'offsetY'
   | 'padding'
   | 'cornerRadius'
+  | 'border'
   | 'backgroundColor'
   | 'color'
   | 'shadow'

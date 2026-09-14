@@ -6,7 +6,7 @@ _Last updated: 2026-09-14_
 
 | Status | Count |
 | --- | --- |
-| Done | 24 |
+| Done | 30 |
 | In Progress | 2 |
 | Todo | 20 |
 
@@ -47,27 +47,91 @@ debug, catalogued in [docs/troubleshooting.md](docs/troubleshooting.md).
 | T-05 | Confirm sticky-header behaviour at scroll 0 | Measured expanded; verify that is what the design shows |
 | T-06 | Triage false positives and tune tolerances | The output of P-02. A check that cries wolf gets ignored |
 
-### Config authoring ergonomics — 0.5 day
+### Config authoring ergonomics
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| T-07 | Build `tovi layers` discovery command | `tovi layers --page "Men's Basketball"` dumps node ids and names so configs are assembled, not typed |
-| T-08 | Scaffold a config from discovered layers | Follows T-07. Removes the hand-typed `figmaId` → `nodeId` typo surface |
+| T-08 | Scaffold a whole config from discovered layers | `tovi layers` now lists ids; generating element stubs from a selection is the remaining half. **Superseded by T-25** if the UI is built — do not build both |
+
+### AI-assisted suggestions (end-user facing)
+
+Ships **with the tool**, for whoever runs a check — not a dev-time helper. After
+the deterministic passes finish, an opt-in layer explains the findings: which
+look like real build defects, which look environmental, grouped by root cause,
+with a suggested fix. The end user reads it in the report.
+
+Input is the **report plus TOVI's own semantics** — tolerances, coordinate
+normalization, the environmental-artifact catalogue in
+[troubleshooting.md](docs/troubleshooting.md). Nothing of the user's leaves the
+machine except the report: no theme source, no screenshot.
+
+**The boundary that makes this safe:** it runs *after* the comparison, consumes
+its output, and can never alter an `Issue`, `RunReport.status`, or the exit
+code. The verdict stays a pure function of
+`(FigmaSpec, LiveStyles, Tolerances)`.
+
+| ID | Task | Notes |
+| --- | --- | --- |
+| T-21 | **`--explain` — AI suggestions in the report** | Per finding: real defect vs environmental artifact, and a suggested fix. Groups by root cause, so "every element off by the same `offsetY`" reads as one banner problem rather than N failures. Can also **flag what the passes did not** — a `0×0` element, a suspicious pattern — as clearly-marked observations, never as issues |
+| T-22 | **Credentials** | `ANTHROPIC_API_KEY`, or an `ant auth login` OAuth profile the SDK resolves automatically. Needed because this ships to end users; a Pro/Max subscription cannot be used by a third-party CLI. With no credential the feature is simply off and the run proceeds normally |
+| T-23 | **Guard the determinism boundary** | Tests asserting the layer cannot alter `Issue[]`, `status`, or the exit code. Off unless `--explain` is passed. A run with the network unplugged must produce an identical verdict and an identical `report.json` |
+
+**Design notes for whoever builds it**
+
+- **`report.json` stays pure.** AI output goes to its own file and its own report
+  section. Putting it in `report.json` breaks the byte-identical guarantee that
+  baseline diffing (T-14) depends on.
+- **A reader must never mistake a suggestion for a measurement.** The report
+  section needs to be visually distinct and labelled as generated — TOVI's whole
+  credibility is that a red line is a measured fact.
+- **Cache the semantics brief.** It is identical across runs, so it belongs
+  behind a `cache_control` breakpoint with the volatile report after it.
+- Model default `claude-opus-5`, adaptive thinking.
+- **When this ships, README's opening line — "There is **no AI** in this tool" —
+  stops being true as written** and needs rewording to say the *comparison* has
+  no AI in it.
+
+### User interface — developers and QA testers
+
+Today TOVI is a CLI whose config is hand-authored JSON. That is fine for CI and
+for a developer, and it is a wall for a QA tester. A local UI to enter a URL,
+pick elements, run a check, and read the results opens the tool to the people
+most likely to use it daily.
+
+**It has to be a local server, not a static page.** A run drives Playwright and
+calls the Figma API — neither is possible from a browser. `tovi ui` starts a
+local HTTP server and serves a small front end that calls it. The Figma token
+stays server-side and never reaches the browser.
+
+**The UI is a front end to the same `runCheck()`.** A run started from the UI
+and a run started from the CLI with the same config must produce byte-identical
+output. The UI is for authoring and exploring; CI stays on the CLI.
+
+| ID | Task | Notes |
+| --- | --- | --- |
+| T-25 | **Visual config builder** | The real unlock. Pick a Figma layer from the `tovi layers` list, pick the matching element on the page, and the UI writes the `figmaId` → `nodeId` mapping. Removes the hand-typed JSON entirely — **supersedes T-08** |
+| T-26 | **Results view** | Findings grouped by element with the screenshot alongside, re-run without restarting, and the T-21 suggestions surfaced inline. This is where a QA tester actually lives |
+
+**Design notes**
+
+- **Scope creep is the risk here.** A config builder and a results viewer are
+  each a real project. T-24 alone — a form that runs a check and shows the
+  existing HTML report — is worth shipping on its own.
+- The existing HTML report is a self-contained artifact and should stay one; the
+  UI is a separate surface, not a replacement for it.
+- No framework is needed for T-24. Reach for one only if T-25/T-26 demand it.
 
 ### Comparison coverage
 
 | ID | Task | Est. | Notes |
 | --- | --- | --- | --- |
-| T-09 | **Compare borders / strokes** | 0.5 day | Highest-value gap. Outline buttons have no fill at all — TOVI checks their box but not what makes them look like buttons. Note `strokeAlign`: `INSIDE` maps to CSS `border`, `CENTER`/`OUTSIDE` do not |
 | T-10 | Compare real gradients | — | Only flat gradients compare today; a multi-stop gradient is skipped |
 | T-11 | Compare text per run, not per element | — | A paragraph with mixed styling compares against the node's dominant style |
-| T-12 | Decide on `line-height: normal` | — | Skipped rather than flagged, because it is font-dependent and has no honest comparison value. Decide whether a warning is better than silence |
 
 ### Reporting
 
 | ID | Task | Est. | Notes |
 | --- | --- | --- | --- |
-| T-13 | Embed the screenshot in the report | 2 hours | Currently linked by path, so the report breaks if moved away from the image |
 | T-14 | Baseline JSON + drift-diff command | — | Reports are byte-identical between runs, so diffing a committed baseline shows *new* drift rather than total drift |
 
 ### Responsive
@@ -80,9 +144,8 @@ debug, catalogued in [docs/troubleshooting.md](docs/troubleshooting.md).
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| T-16 | Add `.github/workflows/design-check.yml` | The recipe is documented in [docs/ci.md](docs/ci.md); no live workflow file exists yet |
-| T-17 | Configure `FIGMA_TOKEN` secret and staging URL variable | Prerequisite for T-16 |
-| T-18 | Start in report-only mode (`--no-fail`), tighten later | Right setting for the first weeks on a real page |
+| T-17 | Add the `FIGMA_TOKEN` secret and commit a `tovi.ci.json` | The two prerequisites `design-check.yml` checks for. Both need repo settings and a real URL |
+| T-18 | Flip `fail_on_drift` on once findings are trusted | The workflow ships report-only. Tightening it is a judgement call that depends on P-02's triage |
 
 ### Project
 
@@ -134,19 +197,69 @@ debug, catalogued in [docs/troubleshooting.md](docs/troubleshooting.md).
 | ID | Task |
 | --- | --- |
 | D-20 | `docs/` — nine guides: getting started, tagging, configuration, comparison, reports, architecture, CI, troubleshooting, index |
-| D-21 | `AGENTS.md` — single source of truth for agents and humans, built around seven named invariants |
+| D-21 | `AGENTS.md` — single source of truth for agents and humans, built around eight named invariants |
 | D-22 | Assistant pointers — `CLAUDE.md`, `.github/copilot-instructions.md`, `.cursor/rules/` |
-| D-23 | `.claude/` — six slash commands, two subagents, permission settings |
+| D-23 | `.claude/` — six slash commands, three subagents (`determinism-auditor`, `test-auditor`, `figma-mapper`), permission settings |
 | D-24 | `CONTRIBUTING.md`, `.editorconfig`, and gitignore hardening for `tovi.config.json` and `.claude/settings.local.json` |
+
+### This session's tickets
+
+| ID | Task |
+| --- | --- |
+| T-09 | **Borders and strokes compared.** Per-side width and colour, colour only where a border is actually drawn. A non-`INSIDE` `strokeAlign` is flagged as info, since CSS borders are always drawn inside the box. Verified against real Chromium |
+| T-12 | **`line-height: normal` decided.** Any text property that cannot be compared now emits an info-severity skip naming the property and why, instead of being dropped — silence was indistinguishable from a pass |
+| T-13 | **Screenshot embedded** as a `data:` URI, so the report is a genuine single file. Over 4MB it falls back to a link and the CLI says so |
+| T-07 | **`tovi layers` discovery command.** Lists node ids and names, filterable by page, name, type and depth. Needs no config |
+| T-16 | **CI workflows shipped** — `ci.yml` (typecheck/test/build, installs Chromium) and `design-check.yml` (manual + weekly, report-only by default) |
+| T-24 | **`tovi ui` — local web UI.** Loopback-only server, token never reaches the browser. Click a Figma layer to add an element. Calls the same `executeRun()` the CLI does, via a refactor that gave both surfaces one pipeline |
 
 ---
 
 ## Notes
 
-**The CI gap is half closed.** PROGRESS.md listed "No CI recipe" as unbuilt; the
-recipe now exists in [docs/ci.md](docs/ci.md) (D-20), but no live workflow file
-does. That is T-16.
+**Test count is now 140** across 9 suites, up from 100. `npm test` still passes
+without Chromium because the integration suite skips itself — install it before
+trusting a green run.
 
-**Effort estimates** come from PROGRESS.md and are unchanged. The remaining work
-is roughly 3–4 days, of which 1–2 days is real-site hardening that cannot start
-until P-02 unblocks.
+**CI needs its own config.** `tovi.config.json` is gitignored because it can name
+a client URL, so `design-check.yml` reads a committed `tovi.ci.json`. Copy
+[tovi.ci.example.json](tovi.ci.example.json) to start.
+
+**What is left is mostly blocked.** Of the 20 remaining todos, 6 are real-site
+hardening that cannot start until P-02 unblocks. The unblocked ones are T-08
+(config scaffolding), T-10/T-11 (gradient and per-run text comparison), T-14
+(baseline diffing), T-15 (multi-viewport), and T-17/T-18 (wiring the CI secrets).
+T-21/T-22/T-23 are the AI suggestion layer; T-25/T-26 extend the UI whose shell
+(T-24) now exists.
+
+**Running against the real Figma file found a bug the fixtures could not.** Page
+names in the file carry emoji — `Men's Basketball 🏀` — so exact matching never
+fired, and the substring fallback selected *both* basketball pages, because
+"Women's Basketball" contains the characters of "Men's Basketball". Page
+selection now matches on whole word tokens. It is a small reminder that P-02 is
+still the biggest risk on this board: fixtures agree with you, real files do
+not.
+
+## On credentials
+
+Two different things get confused here, and they have different answers.
+
+**Suggestions for the end user (T-21) need an API key.** The feature ships with
+the tool and runs on someone else's machine, so TOVI has to carry its own
+credential: `ANTHROPIC_API_KEY`, or an `ant auth login` OAuth profile that the
+SDK resolves with a zero-arg client. A third-party CLI **cannot** authenticate a
+Claude Pro/Max subscription — there is no public OAuth flow for that — so this
+is billed per token, per run, to whoever runs it.
+
+**Helping develop TOVI needs nothing.** That is interactive, development-time
+work: Claude Code on an ordinary subscription, using the `.claude/` scaffolding
+already in the repo — [`AGENTS.md`](AGENTS.md), six commands, three subagents.
+No key, no dependency, no per-run cost.
+
+The deciding factor is *where the AI runs*, not what it reads:
+
+| Where | Auth | Needs an API key |
+| --- | --- | --- |
+| Interactive, on your machine | Claude Code owns it | **No** — subscription covers it |
+| Inside a `tovi` run, on a user's machine | TOVI's own credential | **Yes** |
+| Unattended in CI | A token the runner can use | **Yes** |

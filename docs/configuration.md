@@ -5,6 +5,10 @@ live URL, which elements, and how much drift is acceptable.
 
 Secrets are **not** part of it. The Figma token comes from `FIGMA_TOKEN` only.
 
+`tovi.config.json` is **gitignored**, because a real config names a client URL.
+For CI, commit a separate config — the shipped workflow reads `tovi.ci.json`.
+See [ci.md](ci.md).
+
 The schema lives in [src/config/schema.ts](../src/config/schema.ts); validation
 in [src/config/loadConfig.ts](../src/config/loadConfig.ts). A worked example is
 [tovi.config.example.json](../tovi.config.example.json).
@@ -87,6 +91,7 @@ difference is reported only when it **exceeds** its tolerance (`>`, not `>=`).
 | `position` | A | px | `2` | section-relative x/y offset |
 | `padding` | A | px | `1` | per side |
 | `cornerRadius` | A | px | `1` | per corner |
+| `border` | A | px | `0.5` | per side, width only — colour uses `color` |
 | `color` | A | deltaE | `2` | CIEDE2000 perceptual distance, **not** per-channel |
 | `shadow` | A | px | `1` | offset, blur, spread |
 | `fontSize` | B | px | `0.5` | |
@@ -96,6 +101,10 @@ difference is reported only when it **exceeds** its tolerance (`>`, not `>=`).
 
 The defaults assume sub-pixel rounding, font hinting, and Figma's own rounding
 make an exact-match policy pure noise.
+
+`border` is the deliberate exception at `0.5`. A 1px border built as 2px is
+plainly visible, so a 1px floor would hide the most common border defect there
+is.
 
 ### Why `color` is a deltaE
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "Copy to tovi.config.json and edit. The Figma token is NOT stored here — set FIGMA_TOKEN in your environment.",
+  "$comment": "Copy to tovi.ci.json and commit it. CI reads this file because tovi.config.json is gitignored. The Figma token is NOT stored here — set the FIGMA_TOKEN secret.",
   "figmaFileKey": "AbCdEf123456GhIjKl",
   "url": "https://example.com/",
   "section": "hero",

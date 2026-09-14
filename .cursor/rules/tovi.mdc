@@ -28,6 +28,9 @@ product — it is what makes the tool usable in CI.
 6. Colors compare as CIEDE2000 deltaE via culori, with alpha checked separately.
 7. Escape every value interpolated into a report; layer names and page text are
    untrusted.
+8. AI never enters the comparison path. A planned suggestion layer is advisory:
+   it runs after the passes, is opt-in, writes to its own file, and cannot alter
+   an Issue, the status, or the exit code.
 
 ## Conventions
 

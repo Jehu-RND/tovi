@@ -12,6 +12,7 @@ which is what makes it usable in CI.
 | Guide | Read it when |
 | --- | --- |
 | [Getting started](getting-started.md) | Installing TOVI and getting a first report out |
+| [The local UI](ui.md) | Running checks without hand-editing JSON |
 | [Tagging elements](tagging.md) | Adding `data-figma-id` to a theme or template |
 | [Configuration](configuration.md) | Authoring or tuning `tovi.config.json` |
 | [Comparison passes](comparison.md) | Understanding what is compared and how |

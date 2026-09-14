@@ -34,7 +34,8 @@ Full explanations in [AGENTS.md](AGENTS.md#invariants--do-not-break-these).
 4. Output must be byte-identical between runs.
 5. The Figma token comes from `FIGMA_TOKEN` only.
 6. Colors compare perceptually (CIEDE2000), never per channel.
-7. Escape every value interpolated into a report.
+7. AI never enters the comparison path — advisory layer only, never the verdict.
+8. Escape every value interpolated into a report.
 
 ## Slash commands
 
@@ -45,6 +46,10 @@ Full explanations in [AGENTS.md](AGENTS.md#invariants--do-not-break-these).
 | `/add-property` | Walk the full checklist for a new compared property |
 | `/triage` | Decide whether a finding is a real defect or an artifact |
 | `/sync-docs` | Check docs and PROGRESS.md against the current code |
+
+Subagents: `determinism-auditor` (invariants), `test-auditor` (coverage gaps),
+`figma-mapper` (config authoring). Built-in `/code-review` and `/security-review`
+cover general review.
 
 ## Working here
 

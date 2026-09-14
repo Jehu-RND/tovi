@@ -21,7 +21,7 @@
 
 import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
-import type { BoxSides, CornerRadius, LiveStyles, Rect, Shadow } from '../types.js';
+import type { Borders, BoxSides, CornerRadius, LiveStyles, Rect, Shadow } from '../types.js';
 import type { ViewportConfig } from '../config/schema.js';
 import { fromCssColor } from '../compare/color.js';
 
@@ -79,6 +79,10 @@ export interface RawLiveStyles {
   boundingRect: Rect;
   padding: BoxSides;
   cornerRadius: CornerRadius;
+  /** Computed border widths in px. Already 0 where border-style is none. */
+  borderWidths: BoxSides;
+  /** Raw CSS border colours, parsed on the Node side. */
+  borderColors: { top: string; right: string; bottom: string; left: string };
   backgroundColor: string;
   color: string;
   boxShadow: string;
@@ -177,6 +181,20 @@ function measureAll(targets: Array<{ figmaId: string; selector: string }>): RawM
           bottomRight: toPx(cs.borderBottomRightRadius.split(' ')[0] ?? '0', radiusBasisY),
           bottomLeft: toPx(cs.borderBottomLeftRadius.split(' ')[0] ?? '0', radiusBasisY),
         },
+        // Computed border-width is already 0 when border-style is none or
+        // hidden, so the style keyword needs no separate check.
+        borderWidths: {
+          top: toPx(cs.borderTopWidth, 0),
+          right: toPx(cs.borderRightWidth, 0),
+          bottom: toPx(cs.borderBottomWidth, 0),
+          left: toPx(cs.borderLeftWidth, 0),
+        },
+        borderColors: {
+          top: cs.borderTopColor,
+          right: cs.borderRightColor,
+          bottom: cs.borderBottomColor,
+          left: cs.borderLeftColor,
+        },
         backgroundColor: cs.backgroundColor,
         color: cs.color,
         boxShadow: cs.boxShadow,
@@ -269,12 +287,19 @@ export function parseBoxShadow(value: string): Shadow[] {
  */
 export function normalizeLiveStyles(raw: RawLiveStyles, figmaId: string, selector: string): LiveStyles {
   const transparent = { r: 0, g: 0, b: 0, a: 0 };
+  const borders: Borders = {
+    top: { width: raw.borderWidths.top, color: fromCssColor(raw.borderColors.top) ?? transparent },
+    right: { width: raw.borderWidths.right, color: fromCssColor(raw.borderColors.right) ?? transparent },
+    bottom: { width: raw.borderWidths.bottom, color: fromCssColor(raw.borderColors.bottom) ?? transparent },
+    left: { width: raw.borderWidths.left, color: fromCssColor(raw.borderColors.left) ?? transparent },
+  };
   return {
     figmaId,
     selector,
     boundingRect: raw.boundingRect,
     padding: raw.padding,
     cornerRadius: raw.cornerRadius,
+    borders,
     backgroundColor: fromCssColor(raw.backgroundColor) ?? transparent,
     color: fromCssColor(raw.color) ?? transparent,
     shadows: parseBoxShadow(raw.boxShadow),

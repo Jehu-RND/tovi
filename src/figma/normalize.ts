@@ -8,11 +8,13 @@
  */
 
 import type {
+  Borders,
   BoxSides,
   CornerRadius,
   FigmaSpec,
   Rgba,
   Shadow,
+  StrokeAlign,
   TextSpec,
 } from '../types.js';
 import { fromFigmaColor } from '../compare/color.js';
@@ -48,6 +50,9 @@ interface FigmaEffect {
   color?: FigmaColor;
   offset?: { x?: number; y?: number };
 }
+
+/** Box sides in the order borders are reported. */
+const SIDES = ['top', 'right', 'bottom', 'left'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -161,6 +166,51 @@ export function extractCornerRadius(node: RawFigmaNode): CornerRadius | undefine
 }
 
 /**
+ * Convert a node's stroke into per-side borders.
+ *
+ * Figma models a stroke as paints plus a weight, where the paints apply to the
+ * whole node and only the weight may vary per side. CSS varies both, so the
+ * shared shape carries a colour per side and this function repeats Figma's
+ * single stroke colour across all four.
+ *
+ * Returns undefined when there is nothing to compare: no visible stroke paint,
+ * or a stroke whose every side is zero-width. An absent stroke is not an
+ * assertion that the live element must have no border — Pass A skips the
+ * property rather than demanding zeroes the design never specified.
+ */
+export function extractBorders(node: RawFigmaNode): Borders | undefined {
+  // Strokes are paints, so the fill logic already handles solids, invisible
+  // paints, and gradients flattened to one colour.
+  const color = extractSolidFill(node.strokes);
+  if (color === undefined) return undefined;
+
+  // Figma omits strokeWeight on nodes that never had a stroke, but a node with
+  // stroke paints and no explicit weight is drawn at 1px.
+  const uniform = num(node, 'strokeWeight') ?? 1;
+  const individual = node.individualStrokeWeights;
+  const widthFor = (side: 'top' | 'right' | 'bottom' | 'left'): number => {
+    const override = isRecord(individual) ? num(individual, side) : undefined;
+    return override ?? uniform;
+  };
+
+  const borders: Borders = {
+    top: { width: widthFor('top'), color },
+    right: { width: widthFor('right'), color },
+    bottom: { width: widthFor('bottom'), color },
+    left: { width: widthFor('left'), color },
+  };
+
+  const anyDrawn = SIDES.some((side) => borders[side].width > 0);
+  return anyDrawn ? borders : undefined;
+}
+
+/** Normalize Figma's stroke alignment, defaulting to its own default. */
+export function extractStrokeAlign(node: RawFigmaNode): StrokeAlign {
+  const raw = str(node as unknown as Record<string, unknown>, 'strokeAlign');
+  return raw === 'OUTSIDE' || raw === 'CENTER' ? raw : 'INSIDE';
+}
+
+/**
  * Read auto-layout padding. Returns undefined for non-auto-layout nodes.
  *
  * A node with any padding set gets all four sides, defaulting the unset ones
@@ -269,6 +319,7 @@ export function normalizeFigmaNode(node: RawFigmaNode, figmaId: string): FigmaSp
   const fill = extractSolidFill(node.fills);
   const padding = extractPadding(node);
   const cornerRadius = extractCornerRadius(node);
+  const borders = extractBorders(node);
   const shadows = extractShadows(node.effects);
   const text = isText ? extractTextSpec(node.style) : undefined;
   const characters = isText ? node.characters : undefined;
@@ -280,6 +331,9 @@ export function normalizeFigmaNode(node: RawFigmaNode, figmaId: string): FigmaSp
     absoluteBoundingBox: box,
     ...(padding !== undefined ? { padding } : {}),
     ...(cornerRadius !== undefined ? { cornerRadius } : {}),
+    ...(borders !== undefined
+      ? { borders, strokeAlign: extractStrokeAlign(node) }
+      : {}),
     ...(!isText && fill !== undefined ? { backgroundColor: fill } : {}),
     ...(isText && fill !== undefined ? { color: fill } : {}),
     ...(shadows.length > 0 ? { shadows } : {}),

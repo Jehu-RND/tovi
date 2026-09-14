@@ -46,6 +46,12 @@ function alignedPair(): ElementPair {
       boundingRect: { x: 120, y: 176, width: 180, height: 48 },
       padding: { top: 12, right: 24, bottom: 12, left: 24 },
       cornerRadius: { topLeft: 8, topRight: 8, bottomRight: 8, bottomLeft: 8 },
+      borders: {
+        top: { width: 0, color: { r: 0, g: 0, b: 0, a: 0 } },
+        right: { width: 0, color: { r: 0, g: 0, b: 0, a: 0 } },
+        bottom: { width: 0, color: { r: 0, g: 0, b: 0, a: 0 } },
+        left: { width: 0, color: { r: 0, g: 0, b: 0, a: 0 } },
+      },
       backgroundColor: { r: 0, g: 102, b: 255, a: 1 },
       color: { r: 255, g: 255, b: 255, a: 1 },
       shadows: [],
@@ -212,6 +218,91 @@ describe('diffGeometry', () => {
     const issues = diffGeometry(element, section, tolerances);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ property: 'shadow', detail: '0.blur', delta: 8 });
+  });
+
+  // --- Borders (Pass A) ---
+
+  /** A uniform border of `width` px in `color` on all four sides. */
+  function border(width: number, color = { r: 17, g: 17, b: 17, a: 1 }) {
+    return {
+      top: { width, color },
+      right: { width, color },
+      bottom: { width, color },
+      left: { width, color },
+    };
+  }
+
+  it('accepts a border within tolerance', () => {
+    const element = alignedPair();
+    element.figma!.borders = border(2);
+    element.live!.borders = border(2.3);
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
+  });
+
+  it('reports a border width past tolerance, tagged by side', () => {
+    const element = alignedPair();
+    element.figma!.borders = border(1);
+    element.live!.borders = border(2);
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(4);
+    expect(issues[0]).toMatchObject({
+      property: 'border',
+      detail: 'top.width',
+      expected: '1px',
+      actual: '2px',
+      delta: 1,
+      tolerance: 0.5,
+    });
+  });
+
+  it('signs the delta so a thinner live border reads negative', () => {
+    const element = alignedPair();
+    element.figma!.borders = border(4);
+    element.live!.borders = { ...border(4), left: { width: 1, color: { r: 17, g: 17, b: 17, a: 1 } } };
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ detail: 'left.width', delta: -3 });
+  });
+
+  it('skips borders entirely when the design does not set a stroke', () => {
+    const element = alignedPair();
+    element.live!.borders = border(3);
+    // figma.borders stays undefined — an unset stroke asserts nothing.
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
+  });
+
+  it('reports a border colour mismatch as a perceptual distance', () => {
+    const element = alignedPair();
+    element.figma!.borders = border(2, { r: 0, g: 102, b: 255, a: 1 });
+    element.live!.borders = border(2, { r: 255, g: 0, b: 0, a: 1 });
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(4);
+    expect(issues[0]).toMatchObject({ property: 'border', detail: 'top.color' });
+    expect(issues[0]!.delta).toBeGreaterThan(2);
+  });
+
+  it('does not compare the colour of a border that is not drawn', () => {
+    const element = alignedPair();
+    // Both sides agree there is no border on the right; CSS still reports a
+    // colour for it, and that colour must not be flagged.
+    element.figma!.borders = { ...border(2), right: { width: 0, color: { r: 0, g: 0, b: 0, a: 1 } } };
+    element.live!.borders = { ...border(2), right: { width: 0, color: { r: 255, g: 255, b: 255, a: 1 } } };
+    expect(diffGeometry(element, section, tolerances)).toEqual([]);
+  });
+
+  it('notes a non-INSIDE stroke alignment without failing the run', () => {
+    const element = alignedPair();
+    element.figma!.borders = border(2);
+    element.figma!.strokeAlign = 'OUTSIDE';
+    element.live!.borders = border(2);
+    const issues = diffGeometry(element, section, tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'border',
+      detail: 'strokeAlign',
+      severity: 'info',
+      actual: 'OUTSIDE',
+    });
   });
 
   it('reports one structural issue when the live side is missing', () => {

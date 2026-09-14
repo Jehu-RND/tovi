@@ -86,6 +86,14 @@ The minimum viable config maps each tag to a Figma node id:
 To get a node id: select the layer in Figma and use **Copy link to selection**.
 The URL ends in `node-id=1-23`. TOVI accepts either `1-23` or `1:23`.
 
+To get all of them at once:
+
+```bash
+node dist/index.js layers --page "Men's Basketball" --depth 3
+```
+
+See [tagging.md](tagging.md#or-list-them-all-at-once).
+
 Two fields decide whether a run works at all:
 
 - **`section`** — the `figmaId` of the container every element's position is
@@ -121,6 +129,16 @@ node dist/index.js check -c tovi.config.json -r out/report.html -j out/report.js
 
 Exit code is `1` when any error-severity issue is found, `0` otherwise.
 Warnings alone never fail a run. See [reports.md](reports.md).
+
+## Or skip the JSON
+
+```bash
+npm run build
+npm run ui
+```
+
+Serves a local UI for the same run, where elements are added by clicking Figma
+layers rather than typing node ids. See [ui.md](ui.md).
 
 ## Verify your setup
 

@@ -12,6 +12,7 @@ import {
   renderElementSection,
   renderHtmlReport,
   renderTextSummary,
+  isDataUri,
 } from '../src/report/html.js';
 import type { ElementReport, Issue, RunReport } from '../src/report/types.js';
 
@@ -148,5 +149,39 @@ describe('renderTextSummary', () => {
     expect(lines[1]).toContain('hero-cta');
     expect(lines[1]).toContain('width');
     expect(lines.at(-1)).toContain('0/1 elements passed');
+  });
+});
+
+describe('screenshot embedding', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+
+  it('accepts a base64 png/jpeg/webp data URI', () => {
+    expect(isDataUri(png)).toBe(true);
+    expect(isDataUri('data:image/jpeg;base64,/9j/4AAQSkZJRg==')).toBe(true);
+    expect(isDataUri('data:image/webp;base64,UklGRh4AAABXRUJQ')).toBe(true);
+  });
+
+  it('rejects anything that is not plainly base64 image data', () => {
+    // This value lands in a src attribute, so the guard has to be narrow.
+    expect(isDataUri('out/page.png')).toBe(false);
+    expect(isDataUri('data:text/html;base64,PHNjcmlwdD4=')).toBe(false);
+    expect(isDataUri('javascript:alert(1)')).toBe(false);
+    expect(isDataUri('data:image/svg+xml;base64,PHN2Zz4=')).toBe(false);
+  });
+
+  it('embeds the capture when given a data URI', () => {
+    const html = renderHtmlReport(report(), { screenshotDataUri: png });
+    expect(html).toContain('class="capture"');
+    expect(html).toContain(png);
+  });
+
+  it('omits the capture entirely when given a path instead of a data URI', () => {
+    const html = renderHtmlReport(report(), { screenshotPath: 'out/page.png' });
+    expect(html).not.toContain('class="capture"');
+    expect(html).toContain('out/page.png');
+  });
+
+  it('renders no capture section when no screenshot was taken', () => {
+    expect(renderHtmlReport(report())).not.toContain('class="capture"');
   });
 });

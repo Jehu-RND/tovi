@@ -6,12 +6,14 @@
  *   tovi check --config tovi.config.json --report out/report.html
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Command } from 'commander';
 import { loadConfig, resolveTolerances } from './config/loadConfig.js';
 import type { ElementConfig, ToviConfig } from './config/schema.js';
 import { createFigmaClient } from './figma/client.js';
+import { flattenLayers, pageNames, renderLayers } from './figma/layers.js';
+import { fileExists, startUiServer } from './ui/server.js';
 import { normalizeFigmaNode } from './figma/normalize.js';
 import { extractLiveStyles } from './live/extract.js';
 import { diffText } from './compare/textPass.js';
@@ -19,7 +21,7 @@ import { diffGeometry } from './compare/geometryPass.js';
 import { structuralIssue, valueIssue } from './compare/issues.js';
 import { buildRunReport } from './report/merge.js';
 import { renderHtmlReport, renderTextSummary } from './report/html.js';
-import type { Issue } from './report/types.js';
+import type { Issue, RunReport } from './report/types.js';
 import type { ElementPair, FigmaSpec, LiveStyles, SectionContext } from './types.js';
 
 /**
@@ -58,6 +60,35 @@ export interface CheckOptions {
 function passesFor(element: ElementConfig): { text: boolean; geometry: boolean } {
   const passes = element.passes ?? ['text', 'geometry'];
   return { text: passes.includes('text'), geometry: passes.includes('geometry') };
+}
+
+/**
+ * Largest screenshot that gets embedded into the report.
+ *
+ * Base64 inflates a file by about a third, and a full-page capture of a long
+ * page is easily several megabytes — past this the report becomes something
+ * browsers struggle to open, which is worse than a report that names a path.
+ */
+const MAX_EMBEDDED_SCREENSHOT_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Read a screenshot into a `data:` URI so the report can embed it.
+ *
+ * Embedding is what makes the HTML report a genuine single file: one artifact
+ * to attach to a PR, with no image to lose alongside it.
+ *
+ * @returns The data URI, or undefined when the file is unreadable or too big
+ *          to embed — in which case the report falls back to naming the path.
+ */
+export async function readScreenshotDataUri(path: string): Promise<string | undefined> {
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(path);
+  } catch {
+    return undefined;
+  }
+  if (bytes.byteLength > MAX_EMBEDDED_SCREENSHOT_BYTES) return undefined;
+  return `data:image/png;base64,${bytes.toString('base64')}`;
 }
 
 /** Write a file, creating its parent directory if needed. */
@@ -166,9 +197,65 @@ export function compareAll(
  * @returns The process exit code: 0 when the run passes, 1 when it fails.
  */
 export async function runCheck(options: CheckOptions): Promise<number> {
-  const timestamp = new Date().toISOString();
   const loaded = await loadConfig(options.config);
   const config: ToviConfig = options.url !== undefined ? { ...loaded, url: options.url } : loaded;
+
+  const { report, screenshotPath } = await executeRun(config, {
+    ...(options.screenshot !== undefined ? { screenshotPath: options.screenshot } : {}),
+  });
+
+  // --- Output ---
+  let embedded: string | undefined;
+  if (options.report !== undefined) {
+    if (screenshotPath !== undefined) {
+      embedded = await readScreenshotDataUri(screenshotPath);
+    }
+    await writeOutput(
+      options.report,
+      renderHtmlReport(report, {
+        ...(screenshotPath !== undefined ? { screenshotPath } : {}),
+        ...(embedded !== undefined ? { screenshotDataUri: embedded } : {}),
+      }),
+    );
+  }
+  if (options.json !== undefined) {
+    await writeOutput(options.json, `${JSON.stringify(report, null, 2)}\n`);
+  }
+
+  console.log(renderTextSummary(report));
+  if (options.report !== undefined) console.log(`  report: ${options.report}`);
+  if (options.json !== undefined) console.log(`  json:   ${options.json}`);
+  if (screenshotPath !== undefined && options.report !== undefined && embedded === undefined) {
+    // Say why rather than leaving someone wondering where the capture went.
+    console.log(
+      `  note:   screenshot not embedded (over ${MAX_EMBEDDED_SCREENSHOT_BYTES / 1024 / 1024}MB); ` +
+        `report links ${screenshotPath}`,
+    );
+  }
+
+  const shouldFail = options.fail !== false;
+  return report.status === 'fail' && shouldFail ? 1 : 0;
+}
+
+export interface RunResult {
+  report: RunReport;
+  /** Where the screenshot was written, when one was requested. */
+  screenshotPath?: string;
+}
+
+/**
+ * Run the comparison and return the report, touching no files.
+ *
+ * This is the whole pipeline — fetch, extract, compare, group — with none of
+ * the CLI's output handling. Both runCheck() and the UI server go through it,
+ * so a run started from either produces byte-identical results. Any new
+ * surface that wants to run a check belongs here too, never in a parallel copy.
+ */
+export async function executeRun(
+  config: ToviConfig,
+  options: { screenshotPath?: string } = {},
+): Promise<RunResult> {
+  const timestamp = new Date().toISOString();
 
   // --- Design side ---
   const client = createFigmaClient(config.figmaFileKey as string);
@@ -200,7 +287,7 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     viewport: config.viewport,
     figmaIds: config.elements.map((element) => element.figmaId),
     selectors,
-    ...(options.screenshot !== undefined ? { screenshotPath: options.screenshot } : {}),
+    ...(options.screenshotPath !== undefined ? { screenshotPath: options.screenshotPath } : {}),
   });
 
   // --- Compare ---
@@ -209,29 +296,115 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     ...compareAll(config, figmaSpecs, extraction.styles, new Set(extraction.ambiguous)),
   ];
 
-  const report = buildRunReport(config, issues, timestamp);
+  return {
+    report: buildRunReport(config, issues, timestamp),
+    ...(extraction.screenshotPath !== undefined
+      ? { screenshotPath: extraction.screenshotPath }
+      : {}),
+  };
+}
 
-  // --- Output ---
-  if (options.report !== undefined) {
-    await writeOutput(
-      options.report,
-      renderHtmlReport(report, {
-        ...(extraction.screenshotPath !== undefined
-          ? { screenshotPath: extraction.screenshotPath }
-          : {}),
-      }),
+export interface LayersOptions {
+  /** Figma file key. Defaults to FIGMA_FILE_KEY. */
+  file?: string;
+  /** Restrict to one page, matched case-insensitively. */
+  page?: string;
+  /** Filter by layer name, matched case-insensitively. */
+  search?: string;
+  /** Comma-separated node types, e.g. "FRAME,TEXT". */
+  type?: string;
+  /** How deep to descend below a page. */
+  depth?: string;
+  /** Write the rows as JSON to this path. */
+  json?: string;
+}
+
+/**
+ * List the layers in a Figma file so a config can be assembled from real ids.
+ *
+ * Deliberately does NOT read tovi.config.json: discovery is what you do
+ * *before* you have a config, so requiring one would be backwards.
+ *
+ * @returns The process exit code.
+ */
+export async function runLayers(options: LayersOptions): Promise<number> {
+  const fileKey = options.file ?? process.env['FIGMA_FILE_KEY'];
+  if (fileKey === undefined || fileKey.trim() === '') {
+    throw new Error(
+      'No Figma file key. Pass --file <key> or set FIGMA_FILE_KEY. The key is the ' +
+        'segment after /design/ or /file/ in the file URL.',
     );
   }
-  if (options.json !== undefined) {
-    await writeOutput(options.json, `${JSON.stringify(report, null, 2)}\n`);
+
+  const depth = options.depth === undefined ? 4 : Number(options.depth);
+  if (!Number.isInteger(depth) || depth < 1) {
+    throw new Error(`--depth must be a positive integer, got "${options.depth}"`);
   }
 
-  console.log(renderTextSummary(report));
-  if (options.report !== undefined) console.log(`  report: ${options.report}`);
-  if (options.json !== undefined) console.log(`  json:   ${options.json}`);
+  const client = createFigmaClient(fileKey);
+  // depth is relative to the document root, and a page is already one level
+  // in, so add one to make --depth read as "levels below the page".
+  const file = await client.getFile(depth + 1);
 
-  const shouldFail = options.fail !== false;
-  return report.status === 'fail' && shouldFail ? 1 : 0;
+  const rows = flattenLayers(file, {
+    ...(options.page !== undefined ? { page: options.page } : {}),
+    ...(options.search !== undefined ? { search: options.search } : {}),
+    ...(options.type !== undefined ? { types: options.type.split(',').map((t) => t.trim()) } : {}),
+    maxDepth: depth,
+  });
+
+  // An unmatched page name is a typo, not an empty file — say which pages
+  // exist rather than printing nothing and letting someone guess.
+  if (rows.length === 0 && options.page !== undefined) {
+    const names = pageNames(file);
+    console.log(
+      `No page matching "${options.page}". Pages in this file:\n` +
+        names.map((name) => `  ${name}`).join('\n'),
+    );
+    return 1;
+  }
+
+  if (options.json !== undefined) {
+    await writeOutput(options.json, `${JSON.stringify(rows, null, 2)}\n`);
+  }
+
+  console.log(renderLayers(file, rows));
+  if (options.json !== undefined) console.log(`\n  json:   ${options.json}`);
+  return 0;
+}
+
+export interface UiCommandOptions {
+  port?: string;
+  config?: string;
+}
+
+/**
+ * Start the local UI server and leave it running.
+ *
+ * Does not resolve until the process is stopped — the server is the command.
+ */
+export async function runUi(options: UiCommandOptions): Promise<void> {
+  const port = options.port === undefined ? 4479 : Number(options.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`--port must be a port number, got "${options.port}"`);
+  }
+
+  // Offer the config only when it is actually there, so a first-time user is
+  // not shown an error about a file they were never expected to have.
+  const configPath = options.config ?? 'tovi.config.json';
+  const hasConfig = await fileExists(configPath);
+
+  const { url } = await startUiServer({
+    port,
+    ...(hasConfig ? { configPath } : {}),
+  });
+
+  console.log(`TOVI UI  ${url}`);
+  console.log(hasConfig ? `  config: ${configPath}` : '  config: none — build one in the browser');
+  if (process.env['FIGMA_TOKEN'] === undefined || process.env['FIGMA_TOKEN'].trim() === '') {
+    console.log('  note:   no FIGMA_TOKEN set; runs will fail until one is');
+  }
+  console.log('  Ctrl-C to stop.');
 }
 
 /** Build the commander program. Exported so tests can parse argv directly. */
@@ -256,6 +429,30 @@ export function buildProgram(): Command {
       loadDotEnv();
       const code = await runCheck(options);
       process.exitCode = code;
+    });
+
+  program
+    .command('layers')
+    .description('List a Figma file\'s layers and node ids, for assembling a config')
+    .option('-f, --file <key>', 'Figma file key (defaults to FIGMA_FILE_KEY)')
+    .option('-p, --page <name>', 'restrict to one page, matched case-insensitively')
+    .option('-s, --search <text>', 'only layers whose name contains this')
+    .option('-t, --type <types>', 'comma-separated node types, e.g. FRAME,TEXT')
+    .option('-d, --depth <n>', 'how deep to descend below a page', '4')
+    .option('-j, --json <path>', 'write the rows as JSON to this path')
+    .action(async (options: LayersOptions) => {
+      loadDotEnv();
+      process.exitCode = await runLayers(options);
+    });
+
+  program
+    .command('ui')
+    .description('Serve a local UI for configuring and running checks')
+    .option('-p, --port <port>', 'port to listen on', '4479')
+    .option('-c, --config <path>', 'config file to start from', 'tovi.config.json')
+    .action(async (options: UiCommandOptions) => {
+      loadDotEnv();
+      await runUi(options);
     });
 
   return program;

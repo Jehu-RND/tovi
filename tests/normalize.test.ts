@@ -182,6 +182,70 @@ describe('normalizeFigmaNode', () => {
     expect(spec.text).toBeUndefined();
   });
 
+  it('reads a uniform stroke into four equal borders', () => {
+    const spec = normalizeFigmaNode(
+      node({
+        strokes: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }],
+        strokeWeight: 2,
+        strokeAlign: 'INSIDE',
+      }),
+      'hero-cta',
+    );
+    expect(spec.borders?.top).toEqual({ width: 2, color: { r: 0, g: 0, b: 0, a: 1 } });
+    expect(spec.borders?.left.width).toBe(2);
+    expect(spec.strokeAlign).toBe('INSIDE');
+  });
+
+  it('lets individualStrokeWeights override the uniform weight per side', () => {
+    const spec = normalizeFigmaNode(
+      node({
+        strokes: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }],
+        strokeWeight: 1,
+        individualStrokeWeights: { top: 0, right: 0, bottom: 3, left: 0 },
+      }),
+      'hero-cta',
+    );
+    expect(spec.borders?.bottom.width).toBe(3);
+    expect(spec.borders?.top.width).toBe(0);
+  });
+
+  it('defaults a stroke with no explicit weight to 1px, as Figma draws it', () => {
+    const spec = normalizeFigmaNode(
+      node({ strokes: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }] }),
+      'hero-cta',
+    );
+    expect(spec.borders?.top.width).toBe(1);
+  });
+
+  it('reports no borders for a node with no stroke', () => {
+    const spec = normalizeFigmaNode(node({}), 'hero-cta');
+    expect(spec.borders).toBeUndefined();
+    expect(spec.strokeAlign).toBeUndefined();
+  });
+
+  it('reports no borders when every side is zero-width', () => {
+    const spec = normalizeFigmaNode(
+      node({
+        strokes: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }],
+        strokeWeight: 0,
+      }),
+      'hero-cta',
+    );
+    expect(spec.borders).toBeUndefined();
+  });
+
+  it('carries a non-INSIDE stroke alignment through for the pass to flag', () => {
+    const spec = normalizeFigmaNode(
+      node({
+        strokes: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }],
+        strokeWeight: 2,
+        strokeAlign: 'OUTSIDE',
+      }),
+      'hero-cta',
+    );
+    expect(spec.strokeAlign).toBe('OUTSIDE');
+  });
+
   it('throws for a node with no bounding box', () => {
     const bare: RawFigmaNode = { id: '1:9', name: 'ghost', type: 'FRAME' };
     expect(() => normalizeFigmaNode(bare, 'ghost')).toThrow(/absoluteBoundingBox/);

@@ -1,0 +1,85 @@
+# Compare the Figma design against a live page.
+#
+# Needs two things the repository does not carry by default:
+#
+#   1. A committed config. `tovi.config.json` is gitignored because it can hold
+#      client URLs, so CI reads `tovi.ci.json` — commit one with the URL and
+#      elements you want checked on every run.
+#   2. A FIGMA_TOKEN secret with the "file_content:read" scope, belonging to an
+#      account that can open the file.
+#
+# Starts in report-only mode. A check that cries wolf gets ignored, and an
+# ignored check is worse than no check — so triage the findings on a real page
+# before setting fail_on_drift or making this a required check.
+name: Design check
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Override the URL in the config
+        required: false
+        type: string
+      fail_on_drift:
+        description: Fail the run when drift is found
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Monday morning drift report.
+    - cron: '0 7 * * 1'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Fail early and say what is missing, rather than dying later with a
+      # config-not-found buried in the log.
+      - name: Check prerequisites
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+        run: |
+          missing=0
+          if [ ! -f tovi.ci.json ]; then
+            echo "::error::No tovi.ci.json. CI needs a committed config — tovi.config.json is gitignored because it can hold client URLs."
+            missing=1
+          fi
+          if [ -z "$FIGMA_TOKEN" ]; then
+            echo "::error::No FIGMA_TOKEN secret. Add one with the file_content:read scope."
+            missing=1
+          fi
+          exit $missing
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+
+      - name: Compare design to live
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          URL_OVERRIDE: ${{ inputs.url }}
+          FAIL_ON_DRIFT: ${{ inputs.fail_on_drift }}
+        run: |
+          args=(check --config tovi.ci.json
+                --report out/report.html
+                --json out/report.json
+                --screenshot out/page.png)
+          [ -n "$URL_OVERRIDE" ] && args+=(--url "$URL_OVERRIDE")
+          [ "$FAIL_ON_DRIFT" = "true" ] || args+=(--no-fail)
+          node dist/index.js "${args[@]}"
+
+      # always(): the report is most useful exactly when the step before failed.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tovi-report
+          path: out/
+          retention-days: 30

@@ -37,6 +37,8 @@ npm test                            # vitest run — 100 tests
 npm run test:watch
 
 npm run check -- --config tovi.config.json --report out/report.html
+node dist/index.js layers --page "Men's Basketball" --depth 3
+node dist/index.js ui                # local UI on 127.0.0.1:4479
 ```
 
 **Before declaring any change done: `npm run typecheck && npm test`.** Both must
@@ -107,7 +109,24 @@ CIEDE2000 deltaE via culori, with alpha checked separately (deltaE ignores it).
 Do not implement color math by hand — culori owns parsing, conversion, and
 distance.
 
-### 7. Report every interpolated value escaped
+### 7. AI never enters the comparison path
+
+An AI suggestion layer for end users is planned (T-21). It is **advisory**: it
+runs after the deterministic passes, consumes their output, and explains
+findings to whoever ran the check.
+
+It must never alter an `Issue`, `RunReport.status`, or the exit code, and it
+must stay behind an opt-in flag. Its output goes to its own file — never into
+`report.json`, which has to stay byte-identical for baseline diffing. A run with
+the network unplugged must produce an identical verdict and an identical
+`report.json`.
+
+The comparison itself stays a pure function of
+`(FigmaSpec, LiveStyles, Tolerances)`. That is the property the whole tool is
+built on; an advisory layer downstream does not weaken it, and nothing upstream
+may.
+
+### 8. Report every interpolated value escaped
 
 Layer names come from a design file and text content from a live page. Both are
 untrusted input. `isColorValue()` exists specifically so arbitrary page text can
@@ -214,8 +233,10 @@ When adding a comparison, test all four of:
 7. Update [docs/comparison.md](docs/comparison.md) and
    [docs/configuration.md](docs/configuration.md).
 
-Borders/strokes are the known missing property and the highest-value addition —
-see [PROGRESS.md](PROGRESS.md).
+Borders were added this way and are a good worked example — see
+`extractBorders` in [figma/normalize.ts](src/figma/normalize.ts) and
+`diffBorders` in [compare/geometryPass.ts](src/compare/geometryPass.ts). The
+remaining gaps are listed in [PROGRESS.md](PROGRESS.md).
 
 ### Adding a config field
 
@@ -258,6 +279,7 @@ is how `$comment` works); only tolerance blocks reject unknown keys.
 | How do the stages fit together? | [docs/architecture.md](docs/architecture.md) |
 | What exactly gets compared? | [docs/comparison.md](docs/comparison.md) |
 | What can I put in the config? | [docs/configuration.md](docs/configuration.md) |
+| How does the UI work? | [docs/ui.md](docs/ui.md) |
 | What does the output mean? | [docs/reports.md](docs/reports.md) |
 | Why is this finding wrong? | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | The coordinate-space rule | header of [src/compare/geometryPass.ts](src/compare/geometryPass.ts) |

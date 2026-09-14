@@ -13,8 +13,17 @@
 import type { ElementReport, Issue, RunReport } from './types.js';
 
 export interface RenderOptions {
-  /** Optional screenshot path to link alongside the results. */
+  /** Where the screenshot was written. Shown when it cannot be embedded. */
   screenshotPath?: string;
+  /**
+   * The screenshot as a `data:` URI, embedded directly into the report.
+   *
+   * Embedding is what makes the report a single file you can attach to a PR or
+   * archive as a CI artifact without the image going missing. The caller does
+   * the reading and encoding, so this module stays a pure function of its
+   * inputs and touches no filesystem.
+   */
+  screenshotDataUri?: string;
   /** Include elements that passed. Defaults to true. */
   includePassing?: boolean;
 }
@@ -38,6 +47,17 @@ export function escapeHtml(value: string): string {
  */
 export function isColorValue(value: string): boolean {
   return /^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+\s*)?\)$/.test(value);
+}
+
+/**
+ * Whether a string is a PNG/JPEG/WebP `data:` URI we can safely embed.
+ *
+ * Deliberately narrow, for the same reason isColorValue is: this value lands
+ * in a `src` attribute, so anything that is not plainly base64 image data has
+ * no business reaching it.
+ */
+export function isDataUri(value: string): boolean {
+  return /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(value);
 }
 
 /** Render a value cell, with a swatch when the value is a color. */
@@ -160,9 +180,22 @@ const STYLES = `
   .verdict { font-size: 13px; font-weight: 600; }
   .verdict.fail { color: #dc2626; }
   .verdict.pass { color: #16a34a; }
+  .capture {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 14px 16px; margin-top: 4px;
+  }
+  .capture h2 {
+    margin: 0 0 10px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: #6b7280; font-weight: 600;
+  }
+  .capture img {
+    display: block; max-width: 100%; height: auto;
+    border: 1px solid #e5e7eb; border-radius: 6px;
+  }
   @media (prefers-color-scheme: dark) {
     body { background: #0f1115; color: #e6e8ec; }
-    .summary, .element { background: #161a21; border-color: #272c36; }
+    .summary, .element, .capture { background: #161a21; border-color: #272c36; }
+    .capture img { border-color: #272c36; }
     th { border-bottom-color: #272c36; color: #9aa2b1; }
     td { border-bottom-color: #1e232c; }
     .muted { color: #9aa2b1; }
@@ -183,6 +216,18 @@ export function renderHtmlReport(report: RunReport, options: RenderOptions = {})
   const screenshot = options.screenshotPath;
   const screenshotRow = screenshot !== undefined
     ? `<dt>screenshot</dt><dd style="font-size:13px"><code>${escapeHtml(screenshot)}</code></dd>`
+    : '';
+
+  // Only a data: URI is embedded. A path would make the report depend on a
+  // file sitting next to it, which is the thing embedding exists to fix, and
+  // an arbitrary string here must never reach a src attribute.
+  const capture = options.screenshotDataUri;
+  const captureSection = capture !== undefined && isDataUri(capture)
+    ? `  <section class="capture">
+    <h2>Page capture</h2>
+    <img src="${escapeHtml(capture)}" alt="Full-page screenshot of ${escapeHtml(report.url)}">
+  </section>
+`
     : '';
 
   return `<!doctype html>
@@ -214,7 +259,7 @@ export function renderHtmlReport(report: RunReport, options: RenderOptions = {})
     </dl>
   </div>
 ${elements.map(renderElementSection).join('\n')}
-</div>
+${captureSection}</div>
 </body>
 </html>
 `;

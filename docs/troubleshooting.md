@@ -126,14 +126,21 @@ Measurements are taken at scroll position 0, which is the right choice for
 determinism. A header that shrinks on scroll is measured in its expanded state.
 Compare it against the Figma frame's expanded state.
 
-### `line-height: normal` is never flagged
+### `line-height` shows as skipped
 
-Deliberate. The browser reports it as `NaN`, and Pass B skips any property that
-is not usable on both sides.
+Expected. The browser reports `line-height: normal` as `NaN`, and Pass B only
+compares a property that is usable on both sides.
 
 `normal` is font-dependent — roughly 1.2× but actually determined by font
-metrics — so there is no honest number to compare against. Set an explicit
-`line-height` in CSS if you want it checked.
+metrics — so there is no honest number to compare against. Rather than drop it
+silently, Pass B emits an `info`-severity `skipped` issue saying so, because a
+silently absent check is indistinguishable from a passing one.
+
+It never fails a run. Set an explicit `line-height` in CSS if you want it
+actually compared.
+
+The same applies to any text property one side does not report — the `detail`
+names the property and which side is missing it.
 
 ### An outline button passes but looks wrong
 
@@ -241,5 +248,16 @@ a plain browser first to see whether it ever settles.
 
 ### The report shows no screenshot
 
-The screenshot is **linked by path, not embedded**. Keep the `.png` next to the
-`.html` when archiving or moving the report.
+The capture is embedded as a `data:` URI, so a report that shows none usually
+means it was over the 4MB embedding cap. The CLI prints a note when that
+happens:
+
+```
+  note:   screenshot not embedded (over 4MB); report links out/page.png
+```
+
+In that case keep the `.png` next to the `.html`. To get under the cap, capture
+a narrower viewport or a shorter page.
+
+If no note was printed and there is still no capture, `--screenshot` was not
+passed.

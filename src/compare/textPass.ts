@@ -95,6 +95,20 @@ export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
     if (issue !== undefined) issues.push(issue);
   }
 
+  // A property that could not be compared is reported as an info-severity
+  // skip rather than dropped. Silence here is indistinguishable from a pass,
+  // and `line-height: normal` — the common case — would otherwise look like a
+  // line height that matched the design.
+  for (const key of TEXT_KEYS) {
+    if (comparable.has(key)) continue;
+    issues.push(
+      valueIssue(figmaId, 'text', 'skipped', `${key} compared`, `${key} skipped`, {
+        severity: 'info',
+        detail: skipReason(key, expected, actual),
+      }),
+    );
+  }
+
   // Copy drift is advisory, not a failure: it usually explains a wrapping or
   // height difference reported elsewhere, and content legitimately differs
   // between a design file and a live CMS.
@@ -119,6 +133,25 @@ export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
 export function normalizeFontFamily(family: string): string {
   const first = family.split(',')[0] ?? '';
   return first.trim().replace(/^["']|["']$/g, '').trim().toLowerCase();
+}
+
+/**
+ * Explain why a text property could not be compared.
+ *
+ * The wording matters more than it looks: someone reading a skipped
+ * line-height needs to know it is a property of their CSS, not a gap in the
+ * tool, or they will go looking for a bug that is not there.
+ */
+function skipReason(key: keyof TextSpec, expected: TextSpec, actual: TextSpec): string {
+  const haveDesign = isUsable(expected[key]);
+  const haveLive = isUsable(actual[key]);
+
+  if (!haveLive && key === 'lineHeight') {
+    return 'line-height is `normal` on the live element — font-dependent, so there is no honest number to compare';
+  }
+  if (!haveDesign && !haveLive) return `${key}: neither side reports a value`;
+  if (!haveDesign) return `${key}: the Figma node does not report it`;
+  return `${key}: the live element does not report a comparable value`;
 }
 
 /** Whether a value is present and usable for comparison. */

@@ -13,7 +13,31 @@ meaningful.
 | Chromium | `npx playwright install --with-deps chromium` |
 | A reachable URL | The live or staging page to inspect |
 
-## GitHub Actions
+## What ships in this repo
+
+Two workflows are committed:
+
+| Workflow | Runs on | Needs secrets |
+| --- | --- | --- |
+| [`ci.yml`](../.github/workflows/ci.yml) | push, PR | no |
+| [`design-check.yml`](../.github/workflows/design-check.yml) | manual, weekly cron | yes |
+
+`ci.yml` is the repository's own gate — typecheck, test, build. It installs
+Chromium explicitly, because the integration suite skips itself when the browser
+is absent and a green run without it covers less than it appears to.
+
+`design-check.yml` is the design comparison. Two prerequisites, both checked up
+front so the run fails with a clear message rather than dying later:
+
+1. **A committed `tovi.ci.json`.** `tovi.config.json` is gitignored because it
+   can hold client URLs, so CI reads a separate committed config.
+2. **A `FIGMA_TOKEN` secret** with the `file_content:read` scope, on an account
+   that can open the file.
+
+It starts in **report-only mode** — the `fail_on_drift` input defaults to false,
+which passes `--no-fail`. Triage findings on a real page before turning that on.
+
+## Writing your own
 
 ```yaml
 name: Design check
@@ -61,10 +85,11 @@ jobs:
 `if: always()` on the upload matters — the report is most useful exactly when
 the step before it failed.
 
-The HTML report is self-contained (inline CSS, no external assets), so it opens
-straight from the downloaded artifact with no network. The screenshot is
-**linked, not embedded**, which is why the whole `out/` directory is uploaded
-rather than just the HTML.
+The HTML report is self-contained — inline CSS, no external assets, and the
+screenshot embedded as a `data:` URI — so it opens straight from the downloaded
+artifact with no network. The whole `out/` directory is still uploaded because
+the JSON is what you diff across builds, and because a capture over 4MB is
+linked rather than embedded.
 
 ## Secrets
 

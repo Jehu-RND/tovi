@@ -60,6 +60,7 @@ Compares Figma Dev Mode spec values against the live element's
 - relative position / spacing
 - padding (per side)
 - corner radius (per corner)
+- border (per side: width, and colour where one is drawn)
 - color (background and text, compared perceptually)
 - shadow (offset, blur, spread, color)
 
@@ -84,6 +85,7 @@ Full docs live in [docs/](docs/):
 | Guide | |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, configure, first report |
+| [The local UI](docs/ui.md) | Running checks without hand-editing JSON |
 | [Tagging elements](docs/tagging.md) | Adding `data-figma-id` to a theme |
 | [Configuration](docs/configuration.md) | Full `tovi.config.json` reference |
 | [Comparison passes](docs/comparison.md) | What is compared, and how |
@@ -130,6 +132,26 @@ Options:
 Exit code is `1` when any error-severity issue is found, `0` otherwise.
 Warnings alone do not fail a run.
 
+### The local UI
+
+```bash
+npm run ui
+```
+
+Serves a local UI at `http://127.0.0.1:4479` for running checks and building a
+config by clicking Figma layers instead of typing node ids. It calls the same
+`executeRun()` the CLI does, so a UI run and a CLI run agree exactly. See
+[docs/ui.md](docs/ui.md).
+
+### Finding node ids
+
+```bash
+node dist/index.js layers --page "Men's Basketball" --depth 3
+```
+
+Lists a file's layers with their node ids, so a config can be assembled rather
+than typed. Needs only `FIGMA_TOKEN` and a file key — not a config.
+
 ## Configuration
 
 See [tovi.config.example.json](tovi.config.example.json). The two things worth
@@ -155,10 +177,9 @@ browser is not downloaded.
 
 ### Known gaps
 
-- **Borders are not compared.** An outline button — no fill, all `stroke` — has
-  its box checked but not what makes it look like a button.
-- **`line-height: normal` is skipped, not flagged.** It is font-dependent, so
-  there is no honest number to compare it against.
+- **`line-height: normal` cannot be compared.** It is font-dependent, so there
+  is no honest number to compare against. It is reported as an info-severity
+  skip rather than dropped silently.
 - **Gradients only compare when flat.** A gradient whose stops are all one
   colour is compared as that colour; a real gradient is skipped.
 - **Text is compared per element, not per text run.** A paragraph with mixed
@@ -175,6 +196,7 @@ token injected by CI.
 ```
 src/
   index.ts            CLI entry (commander)
+  ui/                 local UI server + page
   types.ts            shared domain types
   config/             config schema + loading
   figma/              REST client + node normalization
@@ -188,6 +210,7 @@ tests/                one suite per module boundary
 
 ```
 TASKS.md              task board — todo / in progress / done
+.github/workflows/    CI (typecheck/test/build) + design-check
 AGENTS.md             instructions for AI coding agents (and humans)
 CLAUDE.md             Claude Code pointer -> AGENTS.md
 CONTRIBUTING.md       setup, gate, conventions

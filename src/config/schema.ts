@@ -23,6 +23,12 @@ export interface Tolerances {
   /** Pass A: per-corner radius delta, in px. */
   cornerRadius: Px;
   /**
+   * Pass A: per-side border width delta, in px. Deliberately below 1: a 1px
+   * border built as 2px is plainly visible, so a 1px floor would hide the
+   * most common border defect there is.
+   */
+  border: Px;
+  /**
    * Pass A: color distance. Compared as a perceptual deltaE via culori, so
    * this is a deltaE threshold, not a per-channel 0–255 one.
    */
@@ -102,6 +108,7 @@ export const DEFAULT_TOLERANCES: Tolerances = {
   position: 2,
   padding: 1,
   cornerRadius: 1,
+  border: 0.5,
   color: 2,
   shadow: 1,
   fontSize: 0.5,

@@ -1,0 +1,34 @@
+# Repository CI: typecheck, test, build.
+#
+# Runs on every push and PR and needs no secrets — it never touches the Figma
+# API or a live page. The design check itself lives in design-check.yml, which
+# needs both.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The integration suite skips itself when Chromium is absent, so without
+      # this step a green run would cover less than it appears to.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

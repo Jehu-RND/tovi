@@ -145,6 +145,37 @@ describe('diffText', () => {
     expect(diffText(element, tolerances)).toEqual([]);
   });
 
+  // --- Skipped properties are reported, not dropped ---
+
+  it('reports a NaN line-height as an info skip rather than silence', () => {
+    const issues = diffText(pair({}, { lineHeight: Number.NaN }), tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      property: 'skipped',
+      severity: 'info',
+      expected: 'lineHeight compared',
+      actual: 'lineHeight skipped',
+    });
+    expect(issues[0]!.detail).toContain('normal');
+  });
+
+  it('never fails a run on a skip alone', () => {
+    const issues = diffText(pair({}, { lineHeight: Number.NaN }), tolerances);
+    expect(issues.every((issue) => issue.severity !== 'error')).toBe(true);
+  });
+
+  it('says which side is missing the value', () => {
+    const issues = diffText(pair({ fontWeight: Number.NaN }), tolerances);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain('Figma node does not report it');
+  });
+
+  it('still compares every other property when one is skipped', () => {
+    const issues = diffText(pair({}, { lineHeight: Number.NaN, fontSize: 30 }), tolerances);
+    expect(issues.filter((issue) => issue.property === 'fontSize')).toHaveLength(1);
+    expect(issues.filter((issue) => issue.property === 'skipped')).toHaveLength(1);
+  });
+
   it('reports one structural issue when the live side is missing', () => {
     const issues = diffText({ figmaId: 'hero-heading', figma: pair().figma }, tolerances);
     expect(issues).toHaveLength(1);

@@ -59,7 +59,7 @@ are solved and tested.
 | `figma/normalize.ts` | 289 | Done — verified against the real file |
 | `live/extract.ts` | 392 | Done — verified against a browser fixture |
 | `report/merge.ts` | 162 | Done — deterministic ordering |
-| `report/html.ts` | 246 | Done — self-contained, 7KB, offline |
+| `report/html.ts` | 246 | Done — self-contained, offline, embeds the capture |
 | `index.ts` | 271 | Done — full `runCheck()` wiring |
 
 ### Verified against real systems, not just unit tests
@@ -96,16 +96,13 @@ visible). deltaE ignores alpha, so opacity is checked separately.
 | Gap | Impact | Est. |
 | --- | --- | --- |
 | **Never run against the real site** | Unknown unknowns. This is the single biggest risk. | 1–2 days |
-| **No layer-discovery command** | Config must be hand-authored: every `figmaId` → `nodeId` pair typed by hand. On a 1728×6537 page that is hours of tedium and a typo surface. | 0.5 day |
-| **Borders not compared** | Your buttons are outline buttons — no fill, all `stroke`. TOVI checks their box but not what makes them look like buttons. | 0.5 day |
-| **Screenshot is linked, not embedded** | Report references a path instead of showing the capture. | 2 hours |
 | **Single viewport per run** | No responsive checking; mobile needs a second config. | 0.5 day |
-| **No CI recipe** | Nothing documented for running this on deploy. | 2 hours |
 
 ### Known limitations (documented, not necessarily worth fixing)
 
-- `line-height: normal` is skipped rather than flagged — it is font-dependent,
-  so there is no honest number to compare against.
+- `line-height: normal` cannot be compared — it is font-dependent, so there is
+  no honest number. Now surfaced as an info-severity skip rather than dropped
+  silently, so an uncompared property never reads as a passing one.
 - Only flat gradients compare. A gradient whose stops are all one color is
   compared as that color; a real gradient is skipped.
 - Text is compared per element, not per text run. A paragraph with mixed
@@ -144,9 +141,10 @@ anticipate than to debug.
    match Figma layer names (see below). *Blocked on: you.*
 2. **First real run.** Point TOVI at the live URL, see what comes back, and
    triage false positives. This is where the remaining unknowns surface.
-3. **Build the layer-discovery command.** `tovi layers --page "Men's Basketball"`
-   to dump node ids and names, so configs can be assembled rather than typed.
-4. **Decide on borders.** Worth adding to Pass A if outline buttons matter.
+3. ~~**Build the layer-discovery command.**~~ Done — `tovi layers` dumps node
+   ids and names, filterable by page, name, type and depth.
+4. ~~**Decide on borders.**~~ Done — Pass A now compares per-side stroke width
+   and colour, and flags a non-INSIDE `strokeAlign` as info.
 
 ---
 
