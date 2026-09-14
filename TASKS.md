@@ -6,9 +6,9 @@ _Last updated: 2026-09-14_
 
 | Status | Count |
 | --- | --- |
-| Done | 34 |
+| Done | 35 |
 | In Progress | 2 |
-| Todo | 22 |
+| Todo | 21 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
 [PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
@@ -63,7 +63,7 @@ Ordered by how much noise they remove. Full reasoning in
 | T-28 | **Prefer `fontStyle` over the raw numeric `fontWeight`** | Map the CSS weight-name table (Thin 100 … Black 900) and fall back to the number. Fixed lookup, not fuzzy matching — stays inside invariant 7. Fixes the `350` false positive while preserving the real Bold-vs-600 finding |
 | T-29 | **Do not compare box borders on a TEXT node** | A stroke on a text layer is a glyph outline (`-webkit-text-stroke`), not a `border`; the check can only ever fail. Downgrade to `info` **with a reason** — invariant 3 means it must not become silence |
 | T-30 | **Declared font-family aliases in the config** | Figma says `Gotham`, the theme says `"Hco Gotham"` — same typeface, foundry-prefixed name. Fires on every text element on every run. Needs an explicit user-declared alias map, never a fuzzy match |
-| T-32 | **Stop the UI defaulting to a `data-figma-id` selector on a page that has none** | Guarantees a `missingInLive` on the first run and reads as "the tool is broken" rather than "pick a selector". The probe already loads the page and can count `[data-figma-id]`; when it is zero, say so and require a selector instead of pre-filling one that cannot match |
+| ~~T-32~~ | ~~Stop the UI defaulting to a `data-figma-id` selector on a page that has none~~ | **Done.** The UI now resolves each layer against the page itself — attribute, then class, then id, adopting whichever matches exactly one element — debounced so a burst of picks costs one page load. An edited selector is never rewritten. Verified against a React app built from a Figma frame: 8 of 9 layers resolved with no selector work, and the run passed 6/6 |
 | T-31 | **Document the pairing traps in `docs/tagging.md`** | The 526px gap and the `backgroundColor` finding were both one bad pairing: `.wrap` excludes the header and footer that the frame draws. Also worth naming: this design file has pasted screenshots of the live site as layers, which must never be paired |
 
 ### Config authoring ergonomics

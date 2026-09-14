@@ -311,15 +311,36 @@ export const UI_HTML = `<!doctype html>
 
   function defaultSelector(figmaId) { return '[data-figma-id="' + figmaId + '"]'; }
 
+  /**
+   * The selectors worth trying for a layer, best first.
+   *
+   * Guessing one and hoping is what made a first run fail with
+   * missingInLive on every page that had never heard of TOVI. The attribute
+   * is the most durable pairing and stays first, but a page that was built
+   * from the design usually already carries the layer name as a class — so
+   * try that too, and let the page decide which is real.
+   *
+   * Deterministic derivations of the layer name only. This resolves to an
+   * explicit selector that is written into the config and shown in the table,
+   * so a run stays reproducible and the user can always overrule it.
+   */
+  function candidateSelectors(slug) {
+    return ['[data-figma-id="' + slug + '"]', '.' + slug, '#' + slug];
+  }
+
   function addElement(nodeId, name) {
     if (state.elements.some(function (e) { return e.nodeId === nodeId; })) return;
     var slug = uniqueSlug(slugify(name));
     state.elements.push({
       figmaId: slug, nodeId: nodeId, name: name,
-      selector: defaultSelector(slug), passes: ''
+      selector: defaultSelector(slug), passes: '',
+      // While true, the selector is ours to replace with whatever the page
+      // says actually matches. One keystroke from the user ends that.
+      auto: true
     });
     if (!state.section) state.section = slug;
     renderElements();
+    scheduleResolve();
   }
 
   function renderElements() {
@@ -361,10 +382,12 @@ export const UI_HTML = `<!doctype html>
         '<th style="width:24%">Figma layer</th><th>How to find it on the page</th>' +
         '<th style="width:11%">Found?</th><th style="width:18%">Compare</th><th></th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-        '<p class="sub" style="margin-top:10px">Any CSS selector works &mdash; ' +
-        '<code>.hero__title</code>, <code>main .lop-column</code>. The default looks for a ' +
-        '<code>data-figma-id</code> attribute, which is the most stable option if you can ' +
-        'add one, but an existing class is fine to start with.</p>';
+        '<p class="sub" style="margin-top:10px">TOVI looks for each layer on the page ' +
+        'itself &mdash; first a <code>data-figma-id</code> attribute, then a class or id ' +
+        'matching the layer name. Whatever it settles on is shown above and goes into the ' +
+        'config, so you can always overrule it: any CSS selector works, like ' +
+        '<code>.hero__title</code> or <code>main .lop-column</code>. Edit one and TOVI ' +
+        'stops rewriting it.</p>';
     }
 
     renderSectionChoices();
@@ -389,12 +412,21 @@ export const UI_HTML = `<!doctype html>
     select.disabled = !state.elements.length;
   }
 
+  // change, not input: a URL is only worth loading once it is finished
+  // being typed. Layers picked before the URL was known resolve here.
+  $('url').addEventListener('change', function () {
+    syncJson();
+    scheduleResolve();
+  });
+
   $('elements').addEventListener('input', function (event) {
     var field = event.target.getAttribute('data-edit');
     if (!field) return;
     var element = state.elements[Number(event.target.getAttribute('data-i'))];
     if (!element) return;
     element[field] = event.target.value;
+    // Their selector, their call. Auto-resolution must never overwrite it.
+    if (field === 'selector') element.auto = false;
     syncJson();
     // A stale "1 match" next to an edited selector would be a lie.
     if (field === 'selector' && !state.probe[element.selector]) renderElements();
@@ -456,11 +488,15 @@ export const UI_HTML = `<!doctype html>
       return {
         figmaId: e.figmaId, nodeId: e.nodeId, name: e.name || e.figmaId,
         selector: e.selector || defaultSelector(e.figmaId),
+        // A selector written in the config was chosen deliberately; only the
+        // implied default is ours to replace.
+        auto: !e.selector,
         passes: Array.isArray(e.passes) && e.passes.length === 1 ? e.passes[0] : ''
       };
     });
     state.section = config.section || '';
     renderElements();
+    scheduleResolve();
   }
 
   /* ---------- startup: resolve the file in the background ---------- */
@@ -590,6 +626,78 @@ export const UI_HTML = `<!doctype html>
    * A full run costs a browser launch and every Figma node; this costs one
    * page load and answers the only question that matters while authoring.
    */
+  /**
+   * Load the page once, then let it settle every selector it can.
+   *
+   * An element the user has not touched is probed with all of its candidates
+   * and adopts whichever matches exactly one node. An element the user has
+   * edited is probed with that selector alone and never rewritten — their
+   * answer beats ours even when ours would have matched.
+   */
+  async function probeAndResolve() {
+    var url = $('url').value.trim();
+    if (!url || !state.elements.length) return;
+
+    var wanted = [];
+    state.elements.forEach(function (e) {
+      var list = e.auto ? candidateSelectors(e.figmaId) : [e.selector];
+      list.forEach(function (s) { if (s && wanted.indexOf(s) === -1) wanted.push(s); });
+    });
+
+    var data = await api('/api/probe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        url: url,
+        viewport: { width: Number($('vw').value), height: Number($('vh').value) },
+        selectors: wanted
+      })
+    });
+
+    state.probe = {};
+    data.matches.forEach(function (m) { state.probe[m.selector] = m; });
+
+    state.elements.forEach(function (e) {
+      if (!e.auto) return;
+      var candidates = candidateSelectors(e.figmaId);
+      // Exactly one match is the only outcome a check can use. Two matches is
+      // as unusable as none, so it is not adopted.
+      for (var i = 0; i < candidates.length; i += 1) {
+        var hit = state.probe[candidates[i]];
+        if (hit && hit.count === 1) { e.selector = candidates[i]; return; }
+      }
+      e.selector = candidates[0];
+    });
+
+    // Offer the page's own sections as completions, so a selector can be
+    // chosen rather than guessed.
+    $('selhints').innerHTML = (data.candidates || []).map(function (c) {
+      return '<option value="' + esc(c.selector) + '">' + esc(c.describes) + '</option>';
+    }).join('');
+
+    renderElements();
+  }
+
+  /**
+   * Resolve after a burst of layer picks, not during it.
+   *
+   * Clicking six layers should cost one page load, not six.
+   */
+  var resolveTimer = null;
+  function scheduleResolve() {
+    if (!$('url').value.trim()) return;
+    if (resolveTimer) clearTimeout(resolveTimer);
+    resolveTimer = setTimeout(function () {
+      resolveTimer = null;
+      probeAndResolve().catch(function () {
+        // Silent: this is a convenience pass the user did not ask for. The
+        // explicit button reports properly, and a run says what it could not
+        // find. Failing loudly here would put an error on the screen for
+        // someone who has not finished typing a URL.
+      });
+    }, 600);
+  }
+
   $('test').addEventListener('click', async function () {
     var button = $('test');
     var url = $('url').value.trim();
@@ -598,26 +706,7 @@ export const UI_HTML = `<!doctype html>
     button.disabled = true;
     button.textContent = 'Testing…';
     try {
-      var data = await api('/api/probe', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          url: url,
-          viewport: { width: Number($('vw').value), height: Number($('vh').value) },
-          selectors: state.elements.map(function (e) { return e.selector; })
-        })
-      });
-
-      state.probe = {};
-      data.matches.forEach(function (m) { state.probe[m.selector] = m; });
-
-      // Offer the page's own sections as completions, so a selector can be
-      // chosen rather than guessed.
-      $('selhints').innerHTML = (data.candidates || []).map(function (c) {
-        return '<option value="' + esc(c.selector) + '">' + esc(c.describes) + '</option>';
-      }).join('');
-
-      renderElements();
+      await probeAndResolve();
     } catch (err) {
       note($('env'), esc(err.message), 'bad');
     } finally {
@@ -664,9 +753,12 @@ export const UI_HTML = `<!doctype html>
     var banner = '';
     if (missing.length === report.elements.length && report.elements.length) {
       banner = '<div class="note bad"><b>None of these were found on the page</b>' +
-        'The selectors matched nothing. Open the page, inspect the element you meant, ' +
-        'and put its actual selector in the table above — or add a ' +
-        '<code>data-figma-id</code> attribute to the markup.</div>';
+        'Nothing was compared — TOVI could not locate the elements, so this says ' +
+        'nothing yet about whether the build matches the design. It tried a ' +
+        '<code>data-figma-id</code> attribute, then a class and an id named after each ' +
+        'layer. Inspect the element you meant and put its real selector in the table ' +
+        'above; <b>Test selectors</b> confirms a selector without spending a Figma call.' +
+        '</div>';
     } else if (missing.length) {
       banner = '<div class="note"><b>' + missing.length + ' of ' + report.elements.length +
         ' were not found</b>' + missing.map(function (el) {

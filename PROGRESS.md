@@ -78,6 +78,18 @@ Chromium.
 | `report/html.ts` | 246 | Done — self-contained, offline, embeds the capture |
 | `index.ts` | 271 | Done — full `runCheck()` wiring |
 
+### The first green run
+
+On 2026-09-14 TOVI passed a real page for the first time: a React app built from
+a Figma frame (`3:634`, 390×844), six elements, **6/6 passed, 0 errors**. Every
+element reported `paired: true`, and re-running with every tolerance forced to
+`0` produced sub-pixel deltas (0.078px, 0.141px, 0.781px) — so the pass is a
+real measurement agreeing, not a check that quietly did nothing.
+
+That matters more than the count. Until now every run had produced findings, and
+a tool that only ever says "no" is indistinguishable from a broken one. This is
+the first evidence that a green run means what it claims.
+
 ### Verified against real systems, not just unit tests
 
 - **Figma REST API** — fetched real nodes from `Sport-Specific Landing Page`.
@@ -117,7 +129,7 @@ visible). deltaE ignores alpha, so opacity is checked separately.
 | --- | --- | --- |
 | **Four classes of false positive** | Named and scoped by the triage (T-27–T-31). None requires weakening a check. | 1–2 days |
 | **Single viewport per run** | No responsive checking; mobile needs a second config. | 0.5 day |
-| **Nothing stops a bad pairing** | The largest noise class, and the misleading 526px finding, were both authoring mistakes the tool accepted silently. | 1 day |
+| **Nothing stops a bad pairing** | The 526px finding was an authoring mistake the tool accepted silently. Selector resolution (T-32) closed the commonest one; frame choice (P-03) is still unguarded. | 0.5 day |
 
 ### Known limitations (documented, not necessarily worth fixing)
 

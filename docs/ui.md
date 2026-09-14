@@ -42,8 +42,25 @@ against the tolerance it was tested against.
 
 ## You do not have to tag the page first
 
-Each row carries a CSS selector. It defaults to `[data-figma-id="…"]`, which is
-the most stable option, but **any selector works**:
+**TOVI finds each layer on the page itself.** When you pick a layer it loads the
+page once and tries, in order:
+
+1. `[data-figma-id="<layer-name>"]` — the most durable pairing
+2. `.<layer-name>` — the layer name as a class
+3. `#<layer-name>` — the layer name as an id
+
+Whichever matches *exactly one* element is adopted and written into the config.
+Two matches is as unusable as none, so an ambiguous selector is never adopted.
+
+The layer name is slugified first, so a layer called `Play-first episode`
+resolves against `.play-first-episode`. A page built from the design usually
+carries those names already, which means a first run often needs no selector
+work at all.
+
+Whatever it settles on is shown in the table and goes into the config, so the
+run stays reproducible and you can always overrule it. **Edit a selector and
+TOVI stops rewriting it** — your answer wins even when its own would have
+matched. Any selector works:
 
 ```
 .hero__title
@@ -56,6 +73,17 @@ deploy, and until it lands there is nothing to compare — so the first run woul
 otherwise have to wait on a code change. Pointing at classes the markup already
 has gets you a real comparison immediately.
 
+### When a layer will not resolve
+
+Auto-resolution is a deterministic derivation of the layer name, not a guess at
+intent. A layer named `Description` against markup that says
+`class="episode-description"` will not resolve, and the row shows **no match** —
+type the real selector and it stops trying.
+
+`missingInLive` in a report means the same thing: **nothing was compared.** It is
+not a statement that the build differs from the design, and a run full of them
+says nothing about drift yet.
+
 ### Test selectors before running
 
 **Test selectors** loads the page once and reports, per row, whether the
@@ -67,6 +95,9 @@ selector found exactly one element and what that element actually is:
 .mega-menu-item           25 matches li#mega-menu-item-92… · 62×70
 [data-figma-id="hero"]    no match
 ```
+
+Rows TOVI resolved on its own are already filled in by the time you look, so
+this is mostly for confirming a selector you typed yourself.
 
 It costs one page load and no Figma call, so it is a fast loop — unlike a full
 check, which launches a browser *and* fetches every node before it can tell you
