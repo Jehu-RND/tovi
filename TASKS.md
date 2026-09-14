@@ -6,7 +6,7 @@ _Last updated: 2026-09-14_
 
 | Status | Count |
 | --- | --- |
-| Done | 35 |
+| Done | 41 |
 | In Progress | 2 |
 | Todo | 21 |
 
@@ -171,7 +171,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 | ID | Task | Notes |
 | --- | --- | --- |
 | T-19 | Decide licence and distribution | Currently `UNLICENSED` / `private: true` |
-| T-20 | Update PROGRESS.md percentage after P-02 | Currently ~65%. Real-site hardening is 20% of the total and sits at 0% |
+| ~~T-20~~ | ~~Update PROGRESS.md percentage after P-02~~ | **Done.** ~65% → ~80%; real-site hardening 0% → 55%, config ergonomics 0% → 40% |
 
 ---
 
@@ -230,6 +230,11 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 | T-13 | **Screenshot embedded** as a `data:` URI, so the report is a genuine single file. Over 4MB it falls back to a link and the CLI says so |
 | T-07 | **`tovi layers` discovery command.** Lists node ids and names, filterable by page, name, type and depth. Needs no config |
 | T-16 | **CI workflows shipped** — `ci.yml` (typecheck/test/build, installs Chromium) and `design-check.yml` (manual + weekly, report-only by default) |
+| T-32 | **Selectors resolve against the page.** Picking a layer tries a `data-figma-id` attribute, then a class, then an id named after the layer, and adopts whichever matches exactly one element. An edited selector is never rewritten. Removed the guaranteed `missingInLive` on a first run |
+| T-33 | **Picking a layer picks its subtree.** One click takes the whole frame, matched against the page so layers that are not real elements are dropped rather than becoming a wall of `no match`. Verified: one click, 11 elements, `PASS` |
+| T-34 | **A passing run shows what it verified.** New `Check` records every property compared, with both values, delta and tolerance, surfaced in the UI, the HTML report and the terminal summary. Invariant 3 applied to green runs, not just red ones |
+| T-35 | **Live progress during a run.** Six stages streamed over SSE (`POST /api/check/stream`), all listed from the start so a stall points at the step it stalled on. Observational only — the report is byte-identical whether or not anything listens |
+| T-36 | **Regression tests for the served UI script.** The page's JS lives in a template literal; two escaping bugs shipped a page whose script died on parse, and nothing caught either. Two tests now compile every inline script from the served page |
 | T-24 | **`tovi ui` — local web UI.** Loopback-only server, token never reaches the browser. Click a Figma layer to add an element. Calls the same `executeRun()` the CLI does, via a refactor that gave both surfaces one pipeline |
 
 ---
