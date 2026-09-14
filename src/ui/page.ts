@@ -207,34 +207,7 @@ export const UI_HTML = `<!doctype html>
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
-    .tabs {
-    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 16px;
-    border-bottom: 1px solid var(--line);
-  }
-  .tab {
-    background: none; border: 0; border-bottom: 2px solid transparent;
-    color: var(--ink-2); font-weight: 500; font-size: 13px;
-    padding: 7px 12px; border-radius: 6px 6px 0 0; margin-bottom: -1px;
-  }
-  .tab:hover { color: var(--ink); background: var(--sunken); }
-  .tab[aria-selected="true"] {
-    color: var(--accent); border-bottom-color: var(--accent); font-weight: 600;
-  }
-  .tabn {
-    font-variant-numeric: tabular-nums; font-size: 11px;
-    color: var(--ink-2); margin-left: 2px;
-  }
-  .tab[aria-selected="true"] .tabn { color: var(--accent); }
-  .where {
-    margin: 3px 0 0; font-size: 12px; display: flex;
-    flex-wrap: wrap; gap: 6px; align-items: baseline;
-  }
-  .where code { background: var(--sunken); padding: 1px 6px; border-radius: 4px; }
-  .found {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
-    color: var(--ok); background: var(--sunken); padding: 1px 6px; border-radius: 4px;
-  }
-  .spin { animation: none; }
+    .spin { animation: none; }
     .bar span { transition: none; }
   }
 </style>
@@ -343,7 +316,8 @@ export const UI_HTML = `<!doctype html>
   var $ = function (id) { return document.getElementById(id); };
 
   var state = { elements: [], section: '', fileKey: '', pages: [], probe: {},
-                layerRows: [], pickNote: '', report: null, resultTab: 'all' };
+                layerRows: [], layerTotal: 0, pickNote: '', report: null,
+                resultTab: 'all' };
   var ROW_LIMIT = 250;
 
   function esc(s) {
@@ -485,6 +459,10 @@ export const UI_HTML = `<!doctype html>
     }
 
     renderSectionChoices();
+    // Keep the layer list honest about what is picked — adding a subtree,
+    // dropping a child that is not on the page, and Remove all pass through
+    // here, so this is the one place that has to remember.
+    paintLayers();
     syncJson();
     $('run').disabled = state.elements.length === 0;
     $('test').disabled = state.elements.length === 0;
@@ -666,6 +644,8 @@ export const UI_HTML = `<!doctype html>
 
   function renderLayers(data) {
     if (!data.rows.length) {
+      state.layerRows = [];
+      state.layerTotal = 0;
       $('layers').innerHTML = '<p class="sub" style="margin-top:12px">No layers matched.</p>';
       return;
     }
@@ -675,6 +655,24 @@ export const UI_HTML = `<!doctype html>
     // after it with a greater depth — only the ones on screen, so picking a
     // layer never reaches past the depth the user chose to look at.
     state.layerRows = data.rows.slice(0, ROW_LIMIT);
+    state.layerTotal = data.rows.length;
+    paintLayers();
+  }
+
+  /**
+   * Draw the layer list from what is currently picked.
+   *
+   * Separate from fetching so it can be redrawn whenever the picked set
+   * changes, with no Figma call. Picking a frame adds its whole subtree, and
+   * before this only the row that was clicked went grey — the twelve rows it
+   * had just added still looked available, so the list disagreed with the
+   * table below it about what had been picked. Rule 3: nothing that can
+   * disagree with itself.
+   */
+  function paintLayers() {
+    if (!state.layerRows.length) return;
+    var pane = $('layers').querySelector('.listpane');
+    var scroll = pane ? pane.scrollTop : 0;
 
     var rows = state.layerRows.map(function (row, index) {
       // Figma reports no box for pages and for hidden or detached nodes. They
@@ -694,16 +692,25 @@ export const UI_HTML = `<!doctype html>
         '<td class="mono muted tiny">' + size + '</td></tr>';
     }).join('');
 
-    var caption = data.rows.length + ' layers';
-    caption += data.rows.length > ROW_LIMIT
+    var picked = state.layerRows.filter(function (row) {
+      return state.elements.some(function (e) { return e.nodeId === row.nodeId; });
+    }).length;
+
+    var caption = state.layerTotal + ' layers';
+    caption += state.layerTotal > ROW_LIMIT
       ? ', showing the first ' + ROW_LIMIT + ' — narrow by page, name or depth.'
       : ' — click one and everything inside it comes too.';
+    if (picked) caption += '  ' + picked + ' picked.';
 
     $('layers').innerHTML =
-      '<p class="sub" style="margin:12px 0 0">' + caption + '</p>' +
+      '<p class="sub" style="margin:12px 0 0">' + esc(caption) + '</p>' +
       '<div class="listpane"><table><thead><tr>' +
       '<th>Layer</th><th style="width:18%">Type</th><th style="width:18%">Size</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+    // Redrawing must not throw the reader back to the top of a 250-row list.
+    var repainted = $('layers').querySelector('.listpane');
+    if (repainted) repainted.scrollTop = scroll;
   }
 
   /**
@@ -795,7 +802,6 @@ export const UI_HTML = `<!doctype html>
         'Pick a frame inside it instead.');
       return;
     }
-    tr.classList.add('added');
     pickLayer(Number(tr.dataset.i), tr.dataset.node, tr.dataset.name).catch(function (err) {
       state.pickNote = 'Something went wrong picking that layer: ' + err.message;
       renderElements();
