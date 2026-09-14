@@ -214,6 +214,14 @@ export function validateConfig(value: unknown, path?: string): ToviConfig {
     }
   }
 
+  const rawTimeout = value['timeout'];
+  if (rawTimeout !== undefined) {
+    if (typeof rawTimeout !== 'number' || !Number.isFinite(rawTimeout) || rawTimeout <= 0) {
+      throw new ConfigError('"timeout" must be a positive number of milliseconds', path);
+    }
+  }
+  const timeout = rawTimeout as number | undefined;
+
   const tolerances: Tolerances = {
     ...DEFAULT_TOLERANCES,
     ...validateTolerances(value['tolerances'], 'config', path),
@@ -229,7 +237,10 @@ export function validateConfig(value: unknown, path?: string): ToviConfig {
     );
   }
 
-  return { figmaFileKey, url, section, viewport, tolerances, elements };
+  return {
+    figmaFileKey, url, section, viewport, tolerances, elements,
+    ...(timeout !== undefined ? { timeout } : {}),
+  };
 }
 
 /**

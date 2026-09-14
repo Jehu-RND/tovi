@@ -242,9 +242,21 @@ Check by loading the page twice and comparing the JSON reports.
 
 ### Navigation times out
 
-The default navigation timeout is 30s. A page that never reaches network-idle —
-long-polling, analytics beacons, an open websocket — will hit it. Try the URL in
-a plain browser first to see whether it ever settles.
+The default navigation timeout is 30s, and the page is waited on with `load` —
+every resource in the document has loaded — plus `document.fonts.ready` and a
+fixed 500ms settle.
+
+TOVI deliberately does **not** wait for network-idle. That resolves when the
+network has been quiet for a moment, so what it waits for depends on when
+analytics beacons, chat widgets and tracking pixels happen to stop. On a real
+marketing page that moment may never arrive, and when it does it arrives at a
+different time each run — which is the opposite of what this tool needs.
+
+If a page still times out it is genuinely slow rather than stuck. Raise it:
+
+```json
+{ "timeout": 60000 }
+```
 
 ### The report shows no screenshot
 

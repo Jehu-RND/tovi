@@ -32,6 +32,7 @@ in [src/config/loadConfig.ts](../src/config/loadConfig.ts). A worked example is
 | `url` | **yes** | Live page to inspect |
 | `section` | **yes** | `figmaId` of the container every element's position is measured against |
 | `viewport` | **yes** | Browser viewport for the Playwright run |
+| `timeout` | no | Navigation timeout in ms. Default `30000` |
 | `tolerances` | no | Run-level thresholds; defaults are merged in |
 | `elements` | **yes** | The elements to check. Must be non-empty |
 
@@ -230,6 +231,7 @@ Rules worth knowing before you hit them:
 - Tolerance keys must be known and every value finite and `>= 0`.
 - `passes` accepts only `"text"` and `"geometry"`, and must be non-empty.
 - `viewport.width` / `viewport.height` must be positive integers.
+- `timeout`, when present, must be a positive number of milliseconds.
 - `url` must parse as an absolute URL.
 - `section` must name one of the configured elements.
 - Every `relativeTo` must name one of the configured elements.

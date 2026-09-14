@@ -91,6 +91,11 @@ export interface ToviConfig {
    */
   section: string;
   viewport: ViewportConfig;
+  /**
+   * Navigation timeout in ms. Defaults to 30000. Raise it for a page that is
+   * genuinely slow rather than genuinely stuck.
+   */
+  timeout?: number;
   /** Run-level defaults; each element may override individual entries. */
   tolerances: Tolerances;
   elements: ElementConfig[];

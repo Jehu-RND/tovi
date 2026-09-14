@@ -138,7 +138,7 @@ What enforces it:
 | Mechanism | Where |
 | --- | --- |
 | Animations and transitions zeroed, `scroll-behavior: auto` | `live/extract.ts` |
-| Fonts and network waited on before measuring | `live/extract.ts` |
+| `load` + `document.fonts.ready` + a fixed settle before measuring — never network-idle, whose timing depends on third parties | `live/extract.ts` |
 | Viewport pinned; the page is never scrolled | `live/extract.ts` |
 | Elements sorted by config order | `report/merge.ts` |
 | Issues sorted by severity, then a fixed property order, then `detail` | `report/merge.ts` |

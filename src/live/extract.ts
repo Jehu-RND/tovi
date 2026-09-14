@@ -2,8 +2,10 @@
  * TOVI — live-site extraction via Playwright (Chromium).
  *
  * Determinism matters more than speed here. A run must produce the same
- * numbers twice, so the extractor pins the viewport, waits for fonts and
- * network to settle, and disables animations before measuring anything.
+ * numbers twice, so the extractor pins the viewport, waits for `load` and for
+ * fonts, settles for a fixed interval, and disables animations before
+ * measuring anything. It deliberately does not wait for network-idle — see the
+ * note at the goto call for why that is the less reproducible choice.
  *
  * Two rules shape the design of this module:
  *
@@ -34,6 +36,14 @@ export class ExtractionError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Pause after load before measuring, for layout to settle.
+ *
+ * A fixed wait is deliberate. It is the same on every run regardless of how
+ * the network behaved, which is the property that matters here.
+ */
+const SETTLE_MS = 500;
 
 /** Neutralises anything that could change between two runs of the same page. */
 const DETERMINISM_CSS = `
@@ -345,11 +355,24 @@ export async function extractLiveStyles(options: ExtractOptions): Promise<Extrac
     });
     const page = await context.newPage();
 
+    // WAITING STRATEGY — `load`, not `networkidle`.
+    //
+    // networkidle looks like the more careful choice and is in fact the less
+    // deterministic one: it resolves when the network has been quiet for a
+    // moment, so what it waits for depends on when analytics beacons, chat
+    // widgets and tracking pixels happen to stop. On a real marketing page
+    // that quiet moment may never arrive — prolook.com does not reach it in
+    // 30s — and when it does arrive, it arrives at a different time each run.
+    //
+    // `load` is a defined event: every resource in the document has loaded.
+    // Pairing it with document.fonts.ready and a fixed settle gives a state
+    // that is reproducible run to run and does not depend on third parties.
     try {
-      await page.goto(options.url, { waitUntil: 'networkidle', timeout });
+      await page.goto(options.url, { waitUntil: 'load', timeout });
     } catch (error) {
       throw new ExtractionError(
-        `Could not load ${options.url}: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not load ${options.url}: ${error instanceof Error ? error.message : String(error)}. ` +
+          'If the page is simply slow, raise the timeout in the config.',
       );
     }
 
@@ -357,6 +380,9 @@ export async function extractLiveStyles(options: ExtractOptions): Promise<Extrac
     // full of false text failures, so wait for them explicitly.
     await page.evaluate(() => document.fonts.ready);
     await page.addStyleTag({ content: DETERMINISM_CSS });
+
+    // Let layout settle after the fonts swap in and the CSS above lands.
+    await page.waitForTimeout(SETTLE_MS);
 
     // One call, one scroll origin. See the note at the top of this file.
     const measurements = await page.evaluate(measureAll, targets);

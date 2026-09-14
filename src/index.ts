@@ -296,6 +296,7 @@ export async function executeRun(
     viewport: config.viewport,
     figmaIds: config.elements.map((element) => element.figmaId),
     selectors,
+    ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
     ...(options.screenshotPath !== undefined ? { screenshotPath: options.screenshotPath } : {}),
   });
 
