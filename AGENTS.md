@@ -273,6 +273,7 @@ is how `$comment` works); only tolerance blocks reject unknown keys.
 
 | Question | File |
 | --- | --- |
+| I am picking this up cold | [HANDOFF.md](HANDOFF.md) |
 | What is this tool? | [README.md](README.md) |
 | What is actually built, and what isn't? | [PROGRESS.md](PROGRESS.md) |
 | What is being worked on right now? | [TASKS.md](TASKS.md) |

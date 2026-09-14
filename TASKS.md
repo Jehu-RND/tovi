@@ -11,7 +11,8 @@ _Last updated: 2026-09-14_
 | Todo | 20 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
-[PROGRESS.md](PROGRESS.md). This file is the task list.
+[PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
+of where things actually stand. This file is the task list.
 
 ---
 

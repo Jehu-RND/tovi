@@ -94,7 +94,8 @@ Full docs live in [docs/](docs/):
 | [CI integration](docs/ci.md) | Running TOVI on deploy |
 | [Troubleshooting](docs/troubleshooting.md) | When a finding looks wrong |
 
-Current work is tracked in [TASKS.md](TASKS.md). Contributing — human or AI —
+Picking this up cold? Start at [HANDOFF.md](HANDOFF.md). Current work is tracked
+in [TASKS.md](TASKS.md). Contributing — human or AI —
 starts at [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Setup
@@ -209,6 +210,7 @@ tests/                one suite per module boundary
 ## Repository
 
 ```
+HANDOFF.md            read first — state, decisions, what to do next
 TASKS.md              task board — todo / in progress / done
 .github/workflows/    CI (typecheck/test/build) + design-check
 AGENTS.md             instructions for AI coding agents (and humans)
