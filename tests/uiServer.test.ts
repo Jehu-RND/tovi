@@ -126,3 +126,36 @@ describe('GET /api/layers', () => {
     expect(String((await res.json() as { error: string }).error)).toContain('positive integer');
   });
 });
+
+/**
+ * The page's JavaScript is written inside a template literal, so every
+ * backslash escape and backtick in it has to survive one extra round of
+ * interpretation on the way out. Getting that wrong does not fail the build,
+ * the typecheck, or any other test — it ships a page whose script dies on the
+ * first line the browser parses, and the UI silently does nothing.
+ *
+ * This has now happened twice: a backtick in a comment, and `split('\n\n')`
+ * emitting a real newline inside a string literal. Both were found by a person
+ * clicking the page, which is too late and too expensive.
+ */
+describe('the served page parses as JavaScript', () => {
+  it('has a script the browser can actually run', async () => {
+    const html = await (await fetch(base)).text();
+
+    const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((match) => match[1] ?? '');
+    expect(scripts.length).toBeGreaterThan(0);
+
+    for (const source of scripts) {
+      // Compiling is enough: it raises the same SyntaxError the browser would
+      // without running anything or touching the DOM.
+      expect(() => new Function(source)).not.toThrow();
+    }
+  });
+
+  it('closes every string it opens, even across escapes', async () => {
+    const html = await (await fetch(base)).text();
+    // A literal newline inside single quotes is the exact shape of the bug.
+    expect(html).not.toMatch(/'[^'\n]*\n[^'\n]*'\s*\)/);
+  });
+});

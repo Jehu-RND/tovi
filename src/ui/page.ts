@@ -152,6 +152,37 @@ export const UI_HTML = `<!doctype html>
   details { margin-top: 14px; }
   summary { cursor: pointer; font-size: 12px; color: var(--ink-2); }
   [hidden] { display: none !important; }
+  .bar {
+    height: 4px; border-radius: 99px; background: var(--sunken);
+    overflow: hidden; margin-top: 4px;
+  }
+  .bar span {
+    display: block; height: 100%; background: var(--accent);
+    transition: width .35s ease;
+  }
+  .steps { list-style: none; margin: 14px 0 0; padding: 0; }
+  .step {
+    display: flex; align-items: center; gap: 9px;
+    padding: 3px 0; font-size: 13px; color: var(--ink-2);
+  }
+  .step .mark {
+    width: 16px; text-align: center; flex: 0 0 16px; font-size: 12px;
+  }
+  .step.ok { color: var(--ink); }
+  .step.ok .mark { color: var(--ok); }
+  .step.now { color: var(--ink); font-weight: 600; }
+  .step.bad { color: var(--error); }
+  .step.wait { opacity: .5; }
+  .spin {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid var(--accent); border-right-color: transparent;
+    animation: spin .7s linear infinite; vertical-align: -1px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .spin { animation: none; }
+    .bar span { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -816,22 +847,106 @@ export const UI_HTML = `<!doctype html>
 
   /* ---------- run ---------- */
 
+  /**
+   * The stages a run moves through, in order.
+   *
+   * Listed up front rather than discovered from the stream, so the panel shows
+   * what is still to come instead of only what has happened. A run that stalls
+   * then points at the step it stalled on.
+   */
+  var PHASES = [
+    { key: 'figma',     label: 'Fetch the design from Figma' },
+    { key: 'normalize', label: 'Read the design nodes' },
+    { key: 'browser',   label: 'Load the page in Chromium' },
+    { key: 'extract',   label: 'Measure the live elements' },
+    { key: 'compare',   label: 'Compare design against live' },
+    { key: 'report',    label: 'Build the report' }
+  ];
+
+  function renderProgress(current, message, fraction, failedPhase) {
+    var reached = PHASES.findIndex(function (p) { return p.key === current; });
+    var steps = PHASES.map(function (p, i) {
+      var mark, cls;
+      if (failedPhase === p.key) { mark = '&times;'; cls = 'bad'; }
+      else if (i < reached) { mark = '&check;'; cls = 'ok'; }
+      else if (i === reached) { mark = '<span class="spin"></span>'; cls = 'now'; }
+      else { mark = '&middot;'; cls = 'wait'; }
+      return '<li class="step ' + cls + '"><span class="mark">' + mark + '</span>' +
+        esc(p.label) + '</li>';
+    }).join('');
+
+    $('results').innerHTML =
+      '<div class="bar"><span style="width:' + Math.round(fraction * 100) + '%"></span></div>' +
+      '<ul class="steps">' + steps + '</ul>' +
+      '<p class="sub mono tiny" style="margin-top:8px">' + esc(message || '') + '</p>';
+  }
+
+  /**
+   * Read a Server-Sent Events response frame by frame.
+   *
+   * Hand-parsed rather than using EventSource, which cannot POST — and the
+   * config has to go up with the request.
+   */
+  async function streamRun(config, onEvent) {
+    var res = await fetch('/api/check/stream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: config })
+    });
+    if (!res.ok || !res.body) {
+      var fallback = await res.json().catch(function () { return {}; });
+      throw new Error(fallback.error || ('The run failed with HTTP ' + res.status));
+    }
+
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    for (;;) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+
+      // Frames are separated by a blank line; a partial tail stays buffered.
+      var parts = buffer.split('\\n\\n');
+      buffer = parts.pop();
+      parts.forEach(function (frame) {
+        var name = '', data = '';
+        frame.split('\\n').forEach(function (line) {
+          if (line.indexOf('event: ') === 0) name = line.slice(7);
+          else if (line.indexOf('data: ') === 0) data += line.slice(6);
+        });
+        if (name) onEvent(name, JSON.parse(data));
+      });
+    }
+  }
+
   $('run').addEventListener('click', async function () {
     var button = $('run');
     button.disabled = true;
     button.textContent = 'Running…';
     $('resultPanel').hidden = false;
-    $('results').innerHTML = '<p class="sub">Fetching the design and loading the page…</p>';
+    renderProgress('figma', 'Starting…', 0.02);
 
+    var phase = 'figma';
     try {
       var config = currentConfig();
       if (!config.url) throw new Error('Enter the live URL to check.');
-      var data = await api('/api/check', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ config: config })
+
+      var finished = false;
+      await streamRun(config, function (name, payload) {
+        if (name === 'progress') {
+          phase = payload.phase;
+          renderProgress(payload.phase, payload.message, payload.fraction);
+        } else if (name === 'done') {
+          finished = true;
+          renderReport(payload.report);
+        } else if (name === 'failed') {
+          finished = true;
+          renderProgress(phase, payload.error, 1, phase);
+          note($('results'), esc(payload.error), 'bad');
+        }
       });
-      renderReport(data.report);
+      if (!finished) throw new Error('The run ended without producing a report.');
     } catch (err) {
       note($('results'), esc(err.message), 'bad');
     } finally {

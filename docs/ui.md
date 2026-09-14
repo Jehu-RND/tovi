@@ -133,6 +133,30 @@ that is not a design defect. Use selectors to get started and to find out
 whether the findings are worth trusting; move to `data-figma-id` for the checks
 you intend to keep.
 
+## Watching a run
+
+A run launches a browser and calls the Figma API, so ten seconds is normal. The
+results panel shows the stages as they happen rather than going quiet:
+
+```
+✓ Fetch the design from Figma
+✓ Read the design nodes
+◐ Load the page in Chromium
+· Measure the live elements
+· Compare design against live
+· Build the report
+```
+
+All six are listed from the start, so a run that stalls points at the step it
+stalled on. The two that actually take time are the Figma fetch and the page
+load; the comparison itself is milliseconds.
+
+This rides on `POST /api/check/stream`, which is server-sent events — one-way
+traffic, a plain HTTP response, no dependency. Its final frame carries the same
+payload `/api/check` returns, so the two cannot drift apart. Progress is
+observational: the run produces an identical report whether or not anything is
+listening.
+
 ## Why it is a server
 
 A run drives Playwright and calls the Figma REST API. Neither is possible from a

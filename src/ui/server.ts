@@ -175,6 +175,53 @@ async function handleCheck(body: unknown): Promise<Record<string, unknown>> {
 }
 
 /**
+ * Run a check, streaming each stage as it happens.
+ *
+ * A run launches a browser and calls the Figma API, so it routinely takes ten
+ * seconds or more. A button that goes quiet for that long is indistinguishable
+ * from a button that did nothing, and the first thing anyone does is click it
+ * again.
+ *
+ * Server-sent events rather than a websocket: the traffic is one-way, it is a
+ * plain HTTP response, and it needs no dependency. Progress frames are
+ * advisory — the run is unchanged by whether anyone is listening — and the
+ * final frame carries the same payload /api/check returns, so the two
+ * endpoints cannot drift into producing different results.
+ */
+async function handleCheckStream(res: ServerResponse, body: unknown): Promise<void> {
+  if (typeof body !== 'object' || body === null) {
+    throw new Error('Expected a JSON body containing a config');
+  }
+  const config: ToviConfig = validateConfig((body as { config?: unknown }).config);
+
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    // Without this a proxy can hold the whole stream back to the end, which
+    // would deliver every frame at once and defeat the point.
+    'x-accel-buffering': 'no',
+  });
+
+  const send = (event: string, data: unknown): void => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const { report } = await executeRun(config, {
+      onProgress: (progress) => { send('progress', progress); },
+    });
+    send('done', { report, summary: renderTextSummary(report) });
+  } catch (error) {
+    // A failed run is data, not a transport failure: the headers are already
+    // sent, so the error travels as a frame rather than a status code.
+    send('failed', { error: describeError(error) });
+  } finally {
+    res.end();
+  }
+}
+
+/**
  * Test selectors against the live page without running a check.
  *
  * Authoring a config is otherwise a guessing loop: type a selector, run a full
@@ -258,6 +305,11 @@ async function handle(
 
     if (req.method === 'POST' && path === '/api/check') {
       sendJson(res, 200, await handleCheck(await readJsonBody(req)));
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/check/stream') {
+      await handleCheckStream(res, await readJsonBody(req));
       return;
     }
 

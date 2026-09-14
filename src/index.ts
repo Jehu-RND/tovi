@@ -206,6 +206,25 @@ export function compareAll(
   return issues;
 }
 
+/** Which stage of a run a progress event describes. */
+export type RunPhase = 'figma' | 'normalize' | 'browser' | 'extract' | 'compare' | 'report';
+
+/**
+ * One step of a run, for a caller that wants to show what is happening.
+ *
+ * Purely observational. The fractions are rough stage weights, not measured
+ * timings — honest about being an indication of where the run is rather than
+ * a prediction of when it ends.
+ */
+export interface RunProgress {
+  phase: RunPhase;
+  message: string;
+  /** Rough position through the run, 0 to 1, monotonically increasing. */
+  fraction: number;
+  done?: number;
+  total?: number;
+}
+
 /**
  * Run one check: load config -> fetch Figma -> extract live -> diff -> report.
  *
@@ -268,13 +287,25 @@ export interface RunResult {
  */
 export async function executeRun(
   config: ToviConfig,
-  options: { screenshotPath?: string } = {},
+  options: { screenshotPath?: string; onProgress?: (event: RunProgress) => void } = {},
 ): Promise<RunResult> {
   const timestamp = new Date().toISOString();
+  const total = config.elements.length;
+
+  // A no-op default keeps every call site below unconditional. Progress is
+  // reporting only: it observes the run and can never alter it, so a caller
+  // that ignores it gets a byte-identical report.
+  const report = options.onProgress ?? ((): void => {});
 
   // --- Design side ---
+  report({ phase: 'figma', fraction: 0.05, done: 0, total,
+    message: `Fetching ${total} node${total === 1 ? '' : 's'} from Figma…` });
+
   const client = createFigmaClient(config.figmaFileKey as string);
   const rawNodes = await client.getNodes(config.elements.map((element) => element.nodeId));
+
+  report({ phase: 'normalize', fraction: 0.3, done: rawNodes.size, total,
+    message: `Reading ${rawNodes.size} design node${rawNodes.size === 1 ? '' : 's'}…` });
 
   const figmaSpecs = new Map<string, FigmaSpec>();
   const normalizeFailures: Issue[] = [];
@@ -300,6 +331,8 @@ export async function executeRun(
     if (element.selector !== undefined) selectors[element.figmaId] = element.selector;
   }
 
+  report({ phase: 'browser', fraction: 0.4, message: `Loading ${config.url} in Chromium…` });
+
   const extraction = await extractLiveStyles({
     url: config.url,
     viewport: config.viewport,
@@ -309,7 +342,11 @@ export async function executeRun(
     ...(options.screenshotPath !== undefined ? { screenshotPath: options.screenshotPath } : {}),
   });
 
+  report({ phase: 'extract', fraction: 0.8, done: extraction.styles.size, total,
+    message: `Measured ${extraction.styles.size} of ${total} element${total === 1 ? '' : 's'}.` });
+
   // --- Compare ---
+  report({ phase: 'compare', fraction: 0.9, message: 'Comparing design against live…' });
   const checks: Check[] = [];
   const issues = [
     ...normalizeFailures,
@@ -319,8 +356,12 @@ export async function executeRun(
     ),
   ];
 
+  const runReport = buildRunReport(config, issues, timestamp, checks);
+  report({ phase: 'report', fraction: 1, done: total, total,
+    message: `${checks.length} propert${checks.length === 1 ? 'y' : 'ies'} compared.` });
+
   return {
-    report: buildRunReport(config, issues, timestamp, checks),
+    report: runReport,
     ...(extraction.screenshotPath !== undefined
       ? { screenshotPath: extraction.screenshotPath }
       : {}),
