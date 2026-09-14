@@ -125,6 +125,7 @@ export function compareAll(
   figmaSpecs: Map<string, FigmaSpec>,
   liveStyles: Map<string, LiveStyles>,
   ambiguous: Set<string> = new Set(),
+  alreadyReported: Set<string> = new Set(),
 ): Issue[] {
   const issues: Issue[] = [];
 
@@ -144,7 +145,12 @@ export function compareAll(
       continue;
     }
     if (figma === undefined) {
-      issues.push(structuralIssue(figmaId, 'geometry', 'missingInFigma'));
+      // A node that failed to normalize already has an issue explaining why,
+      // and it says more than "no Figma node found" would. Reporting both
+      // states the same fact twice, in descending order of usefulness.
+      if (!alreadyReported.has(figmaId)) {
+        issues.push(structuralIssue(figmaId, 'geometry', 'missingInFigma'));
+      }
       continue;
     }
     if (live === undefined) {
@@ -263,6 +269,8 @@ export async function executeRun(
 
   const figmaSpecs = new Map<string, FigmaSpec>();
   const normalizeFailures: Issue[] = [];
+  /** Elements whose structural problem normalization already reported. */
+  const reportedByNormalize = new Set<string>();
   for (const element of config.elements) {
     const raw = rawNodes.get(element.nodeId.replace(/-/g, ':'));
     if (raw === undefined) continue;
@@ -273,6 +281,7 @@ export async function executeRun(
         valueIssue(element.figmaId, 'geometry', 'missingInFigma', 'a measurable node',
           error instanceof Error ? error.message : String(error)),
       );
+      reportedByNormalize.add(element.figmaId);
     }
   }
 
@@ -293,7 +302,10 @@ export async function executeRun(
   // --- Compare ---
   const issues = [
     ...normalizeFailures,
-    ...compareAll(config, figmaSpecs, extraction.styles, new Set(extraction.ambiguous)),
+    ...compareAll(
+      config, figmaSpecs, extraction.styles,
+      new Set(extraction.ambiguous), reportedByNormalize,
+    ),
   ];
 
   return {

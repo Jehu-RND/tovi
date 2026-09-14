@@ -150,4 +150,20 @@ describe('compareAll', () => {
     expect(issues.every((i) => i.figmaId === 'panel')).toBe(true);
     expect(issues.map((i) => i.property).sort()).toEqual(['offsetX', 'offsetY']);
   });
+
+  it('does not restate a structural problem normalization already reported', () => {
+    // A node that failed to normalize carries an issue saying why, which is
+    // more useful than "no Figma node found". Emitting both states the same
+    // fact twice, in descending order of usefulness.
+    const cfg = config([{ figmaId: 'hero', nodeId: '1:1' }]);
+    const issues = compareAll(cfg, new Map(), new Map(), new Set(), new Set(['hero']));
+    expect(issues).toEqual([]);
+  });
+
+  it('still reports a genuinely absent node', () => {
+    const cfg = config([{ figmaId: 'hero', nodeId: '1:1' }]);
+    const issues = compareAll(cfg, new Map(), new Map());
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ property: 'missingInFigma' });
+  });
 });
