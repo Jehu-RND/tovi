@@ -257,7 +257,8 @@ export const UI_HTML = `<!doctype html>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
 
-  var state = { elements: [], section: '', fileKey: '', pages: [], probe: {} };
+  var state = { elements: [], section: '', fileKey: '', pages: [], probe: {},
+                layerRows: [], pickNote: '' };
   var ROW_LIMIT = 250;
 
   function esc(s) {
@@ -328,7 +329,11 @@ export const UI_HTML = `<!doctype html>
     return ['[data-figma-id="' + slug + '"]', '.' + slug, '#' + slug];
   }
 
-  function addElement(nodeId, name) {
+  /**
+   * @param quiet Skip the render and the resolve pass. Set while adding a
+   *              subtree, so twelve layers cost one of each rather than twelve.
+   */
+  function addElement(nodeId, name, quiet) {
     if (state.elements.some(function (e) { return e.nodeId === nodeId; })) return;
     var slug = uniqueSlug(slugify(name));
     state.elements.push({
@@ -339,6 +344,7 @@ export const UI_HTML = `<!doctype html>
       auto: true
     });
     if (!state.section) state.section = slug;
+    if (quiet) return;
     renderElements();
     scheduleResolve();
   }
@@ -378,6 +384,9 @@ export const UI_HTML = `<!doctype html>
       }).join('');
 
       box.innerHTML =
+        (state.pickNote
+          ? '<p class="sub" style="margin:0 0 10px">' + esc(state.pickNote) + '</p>'
+          : '') +
         '<div class="scroll"><table><thead><tr>' +
         '<th style="width:24%">Figma layer</th><th>How to find it on the page</th>' +
         '<th style="width:11%">Found?</th><th style="width:18%">Compare</th><th></th>' +
@@ -576,7 +585,13 @@ export const UI_HTML = `<!doctype html>
       return;
     }
 
-    var rows = data.rows.slice(0, ROW_LIMIT).map(function (row) {
+    // Kept so a click can find what sits inside the layer. The rows are a
+    // flattened tree in document order, so a layer's descendants are the rows
+    // after it with a greater depth — only the ones on screen, so picking a
+    // layer never reaches past the depth the user chose to look at.
+    state.layerRows = data.rows.slice(0, ROW_LIMIT);
+
+    var rows = state.layerRows.map(function (row, index) {
       // Figma reports no box for pages and for hidden or detached nodes. They
       // cannot be measured, so they cannot be compared.
       var measurable = row.width !== undefined && row.height !== undefined;
@@ -586,6 +601,7 @@ export const UI_HTML = `<!doctype html>
 
       return '<tr class="pick' + (measurable ? (already ? ' added' : '') : ' disabled') + '"' +
         ' data-node="' + esc(row.nodeId) + '" data-name="' + esc(row.name) + '"' +
+        ' data-i="' + index + '"' +
         ' data-ok="' + (measurable ? '1' : '') + '">' +
         '<td>' + '&nbsp;'.repeat(row.depth * 3) + esc(row.name) +
           (already ? ' <span class="muted tiny">· picked</span>' : '') + '</td>' +
@@ -596,13 +612,93 @@ export const UI_HTML = `<!doctype html>
     var caption = data.rows.length + ' layers';
     caption += data.rows.length > ROW_LIMIT
       ? ', showing the first ' + ROW_LIMIT + ' — narrow by page, name or depth.'
-      : ' — click the ones you want checked.';
+      : ' — click one and everything inside it comes too.';
 
     $('layers').innerHTML =
       '<p class="sub" style="margin:12px 0 0">' + caption + '</p>' +
       '<div class="listpane"><table><thead><tr>' +
       '<th>Layer</th><th style="width:18%">Type</th><th style="width:18%">Size</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  /**
+   * The layers nested inside the one at index, as far down as the list goes.
+   *
+   * The rows are a flattened tree, so the subtree runs until depth returns to
+   * the parent's own level.
+   */
+  function subtreeOf(index) {
+    var rows = state.layerRows || [];
+    var parent = rows[index];
+    if (!parent) return [];
+    var out = [];
+    for (var i = index + 1; i < rows.length; i += 1) {
+      if (rows[i].depth <= parent.depth) break;
+      out.push(rows[i]);
+    }
+    return out;
+  }
+
+  /**
+   * Pick a layer, and everything inside it.
+   *
+   * Picking one frame at a time is not how anyone actually works — a screen is
+   * a container plus the things in it, and clicking sixteen rows to say so is
+   * the tedium this list exists to remove.
+   *
+   * The children are then filtered against the page. A design carries plenty
+   * of layers that are not elements — text runs, vectors, spacing frames — and
+   * adding them all would replace the tedium with a wall of "no match". So the
+   * subtree is resolved first and only the children that really exist on the
+   * page are kept. The layer you actually clicked is always kept, even when it
+   * does not resolve, because a silent no-op would be worse than an error you
+   * can see.
+   */
+  async function pickLayer(index, nodeId, name) {
+    var before = state.elements.length;
+    addElement(nodeId, name, true);
+    if (state.elements.length === before) return;   // already picked
+    var clicked = state.elements[state.elements.length - 1];
+
+    var kids = subtreeOf(index).filter(function (r) {
+      return r.width !== undefined && r.height !== undefined;
+    });
+    kids.forEach(function (r) { addElement(r.nodeId, r.name, true); });
+    var added = state.elements.slice(before);
+    renderElements();
+
+    if (!$('url').value.trim() || added.length === 1) {
+      state.pickNote = added.length > 1
+        ? 'Added ' + added.length + ' layers. Enter the live URL and they will be matched to the page.'
+        : '';
+      renderElements();
+      return;
+    }
+
+    state.pickNote = 'Matching ' + added.length + ' layers against the page…';
+    renderElements();
+
+    try {
+      await probeAndResolve();
+    } catch (err) {
+      state.pickNote = 'Could not load the page to match these: ' + err.message;
+      renderElements();
+      return;
+    }
+
+    var dropped = 0;
+    state.elements = state.elements.filter(function (e) {
+      if (e === clicked || added.indexOf(e) === -1) return true;
+      var hit = state.probe[e.selector];
+      if (hit && hit.count === 1) return true;
+      dropped += 1;
+      return false;
+    });
+
+    var kept = state.elements.length - before;
+    state.pickNote = 'Added ' + kept + (kept === 1 ? ' layer' : ' layers') + ' from ' + name +
+      (dropped ? ', and skipped ' + dropped + ' that are not on the page.' : '.');
+    renderElements();
   }
 
   $('layers').addEventListener('click', function (event) {
@@ -614,8 +710,11 @@ export const UI_HTML = `<!doctype html>
         'Pick a frame inside it instead.');
       return;
     }
-    addElement(tr.dataset.node, tr.dataset.name);
     tr.classList.add('added');
+    pickLayer(Number(tr.dataset.i), tr.dataset.node, tr.dataset.name).catch(function (err) {
+      state.pickNote = 'Something went wrong picking that layer: ' + err.message;
+      renderElements();
+    });
   });
 
   /* ---------- selector probe ---------- */

@@ -40,6 +40,25 @@ Three steps, in order:
 Results render per element: property, design value, live value, and the delta
 against the tolerance it was tested against.
 
+## Picking a layer picks what is inside it
+
+A screen is a container plus the things in it, and clicking sixteen rows to say
+so is the tedium the layer list exists to remove. **Click one layer and its
+whole subtree comes with it**, as far down as the depth you are viewing.
+
+The children are then matched against the page, and the ones that are not
+really there are dropped:
+
+```
+Added 11 layers from Play-first episode, and skipped 5 that are not on the page.
+```
+
+That filtering matters. A design carries plenty of layers that are not elements
+— text runs, vectors, spacing frames — and adding them all would replace the
+tedium with a wall of `no match`. The layer you actually clicked is always kept
+even when it does not resolve, because a silent no-op is worse than a visible
+error.
+
 ## You do not have to tag the page first
 
 **TOVI finds each layer on the page itself.** When you pick a layer it loads the
