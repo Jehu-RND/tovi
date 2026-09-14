@@ -1,5 +1,11 @@
 # Tagging elements
 
+> **You can start without tagging anything.** Every element accepts a CSS
+> `selector` instead, so an existing class will do — see
+> [selector](#when-you-cannot-add-an-attribute) below and [the UI](ui.md). The
+> attribute is the more durable choice for checks you intend to keep; it is not
+> a prerequisite for a first run.
+
 TOVI pairs a design node with a live element through one attribute:
 
 ```html

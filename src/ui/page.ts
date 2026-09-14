@@ -4,29 +4,27 @@
  * Kept as a string for the same reason report/html.ts is: `tsc` copies no
  * assets, so a separate .html file would not survive the build into `dist/`.
  *
- * No framework and no CDN. The page is served from loopback by a tool whose
- * whole claim is determinism; a build step and a network dependency would both
- * be a poor trade for what this is.
- *
  * ====================================================================
- * DESIGN RULE — the config format is not the interface.
+ * DESIGN RULES — read before adding a control.
  * ====================================================================
  *
- * The first version of this page exposed TOVI's config directly: a JSON
- * textarea for elements and a free-text field for the section. It was unusable
- * by anyone who did not already know the data model, and it made an entire
- * class of error possible — typing a section name that matched no element,
- * because the two were independent strings.
+ * 1. THE CONFIG FORMAT IS NOT THE INTERFACE. The first version exposed it
+ *    directly — a JSON textarea for elements, a free-text box for the section —
+ *    and it was unusable by anyone who did not already know the data model. The
+ *    page owns a state object and renders controls from it. `figmaId` is an
+ *    internal key and is never shown.
  *
- * So the page owns a small state object and renders controls from it:
+ * 2. OFFER A CHOICE, DO NOT ASK FOR A VALUE. Anything with a knowable set of
+ *    options is a <select> populated in the background: the Figma page, the
+ *    viewport, the depth. A text input is a last resort for things only the
+ *    user knows — the URL, and a CSS selector.
  *
- *   - Elements are a table, built by clicking layers. Never hand-typed JSON.
- *   - The section is a <select> over the elements that exist, so it cannot
- *     name something absent.
- *   - Layers Figma cannot measure are not addable at all.
+ * 3. NOTHING THAT CAN DISAGREE WITH ITSELF. The section is chosen from the
+ *    elements that exist, so it cannot name something absent. Two independent
+ *    strings for the same thing is the bug pattern this page keeps hitting.
  *
- * The JSON view survives as an advanced disclosure for people who want it.
- * Adding a control that takes a raw config value as free text is a regression.
+ * 4. LONG LISTS SCROLL IN PLACE. A real file returns thousands of layers;
+ *    the browser sits in its own fixed-height pane so the page stays navigable.
  */
 
 export const UI_HTML = `<!doctype html>
@@ -56,50 +54,64 @@ export const UI_HTML = `<!doctype html>
     margin: 0; background: var(--ground); color: var(--ink);
     font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding-inline: 20px; padding-block: 24px 64px; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding-inline: 20px; padding-block: 24px 64px; }
   header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
   .sub { color: var(--ink-2); font-size: 13px; margin: 0; }
   h2 {
     font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
-    color: var(--ink-2); margin: 0 0 10px; font-weight: 600;
+    color: var(--ink-2); margin: 0 0 12px; font-weight: 600;
   }
   .panel {
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: 10px; padding: 16px; margin-top: 16px;
+    border-radius: 10px; padding: 16px; margin-top: 14px;
   }
   .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-  .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; }
-  .field.narrow { flex: 0 0 110px; }
+  .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 190px; min-width: 0; }
+  .field.narrow { flex: 0 0 130px; }
   label { font-size: 12px; color: var(--ink-2); }
-  input, select, textarea {
+  input, select {
     font: inherit; color: inherit; background: var(--ground);
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
     min-width: 0; width: 100%;
   }
-  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 160px; }
+  input.mono, textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  textarea {
+    width: 100%; min-height: 150px; background: var(--ground); color: inherit;
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+  }
   input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
   button {
-    font: inherit; font-weight: 600; cursor: pointer;
-    background: var(--accent); color: #fff; border: 0;
-    border-radius: 6px; padding: 8px 16px; white-space: nowrap;
+    font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 16px;
   }
   button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); font-weight: 500; }
+  button.link {
+    background: none; border: 0; color: var(--accent); padding: 0;
+    font-size: 12px; font-weight: 500; text-decoration: underline;
+  }
   button.icon {
     background: transparent; color: var(--ink-2); border: 1px solid var(--line);
-    padding: 3px 9px; font-weight: 400; line-height: 1.4;
+    padding: 3px 9px; font-weight: 400; font-size: 12px;
   }
   button.icon:hover { color: var(--error); border-color: var(--error); }
   button:disabled { opacity: .45; cursor: default; }
   table { width: 100%; border-collapse: collapse; }
   th {
     text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-    color: var(--ink-2); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line);
+    color: var(--ink-2); font-weight: 600; padding: 7px 8px; border-bottom: 1px solid var(--line);
+    background: var(--surface); position: sticky; top: 0; z-index: 1;
   }
   td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   tr:last-child td { border-bottom: 0; }
+  /* Rule 4: the layer list scrolls in its own pane, never the whole page. */
+  .listpane {
+    max-height: 340px; overflow: auto; border: 1px solid var(--line);
+    border-radius: 8px; margin-top: 10px; background: var(--ground);
+  }
+  .listpane th { background: var(--ground); }
   code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
   .chip {
     display: inline-block; padding: 1px 7px; border-radius: 999px;
@@ -112,12 +124,12 @@ export const UI_HTML = `<!doctype html>
   .verdict.pass { color: var(--ok); }
   .verdict.fail { color: var(--error); }
   .muted { color: var(--ink-2); }
+  .tiny { font-size: 11px; }
   .note {
     border-left: 3px solid var(--warn); background: var(--accent-soft);
     padding: 10px 12px; border-radius: 0 6px 6px 0; font-size: 13px; margin-top: 12px;
   }
   .note.bad { border-left-color: var(--error); }
-  .note.good { border-left-color: var(--ok); }
   .note b { display: block; margin-bottom: 3px; }
   .scroll { overflow-x: auto; }
   .empty {
@@ -126,16 +138,15 @@ export const UI_HTML = `<!doctype html>
   }
   .pick { cursor: pointer; }
   .pick:hover { background: var(--accent-soft); }
-  .pick.disabled { cursor: not-allowed; opacity: .5; }
+  .pick.disabled { cursor: not-allowed; opacity: .45; }
   .pick.disabled:hover { background: transparent; }
-  .pick.added { opacity: .55; }
+  .pick.added { opacity: .5; }
   .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
   .stat { font-size: 12px; color: var(--ink-2); }
   .stat b { display: block; font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .filemeta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; }
   details { margin-top: 14px; }
   summary { cursor: pointer; font-size: 12px; color: var(--ink-2); }
-  .slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-  .tiny { font-size: 11px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -151,50 +162,60 @@ export const UI_HTML = `<!doctype html>
   <section class="panel">
     <h2>1 &middot; The page to check</h2>
     <div class="row">
-      <div class="field">
+      <div class="field" style="flex:1 1 320px">
         <label for="url">Live URL</label>
-        <input id="url" type="url" placeholder="https://example.com/" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="fileKey">Figma file key</label>
-        <input id="fileKey" type="text" placeholder="from the file URL" autocomplete="off">
+        <input id="url" type="url" placeholder="https://example.com/page/" autocomplete="off">
       </div>
       <div class="field narrow">
-        <label for="vw">Width</label>
-        <input id="vw" type="number" value="1440" min="1" step="1">
+        <label for="preset">Screen size</label>
+        <select id="preset">
+          <option value="1440x900">Desktop · 1440</option>
+          <option value="1728x1080">Desktop · 1728</option>
+          <option value="1280x800">Laptop · 1280</option>
+          <option value="768x1024">Tablet · 768</option>
+          <option value="390x844">Phone · 390</option>
+          <option value="custom">Custom…</option>
+        </select>
       </div>
-      <div class="field narrow">
-        <label for="vh">Height</label>
-        <input id="vh" type="number" value="900" min="1" step="1">
+      <div class="field narrow" id="customSize" hidden>
+        <label for="vw">Width &times; height</label>
+        <div class="row" style="gap:6px">
+          <input id="vw" type="number" value="1440" min="1" step="1" style="flex:1">
+          <input id="vh" type="number" value="900" min="1" step="1" style="flex:1">
+        </div>
       </div>
     </div>
-    <p class="sub" style="margin-top:10px">
-      The width should match the width of the Figma frame you are comparing against.
-    </p>
+    <p class="sub" style="margin-top:10px" id="fileLine">Loading the Figma file…</p>
   </section>
 
   <section class="panel">
     <h2>2 &middot; Pick the layers to check</h2>
     <div class="row">
       <div class="field">
-        <label for="lpage">Page</label>
-        <input id="lpage" type="text" placeholder="all pages" autocomplete="off">
+        <label for="lpage">Figma page</label>
+        <select id="lpage"><option value="">loading…</option></select>
       </div>
       <div class="field">
         <label for="lsearch">Layer name contains</label>
         <input id="lsearch" type="text" placeholder="hero" autocomplete="off">
       </div>
       <div class="field narrow">
-        <label for="ldepth">Depth</label>
-        <input id="ldepth" type="number" value="4" min="1" step="1">
+        <label for="ldepth">How deep</label>
+        <select id="ldepth">
+          <option value="1">Top level</option>
+          <option value="2">2 levels</option>
+          <option value="3" selected>3 levels</option>
+          <option value="4">4 levels</option>
+          <option value="5">5 levels</option>
+        </select>
       </div>
-      <button id="browse" class="ghost" type="button">Browse layers</button>
+      <button id="browse" class="ghost" type="button">Show layers</button>
     </div>
     <div id="layers"></div>
   </section>
 
   <section class="panel">
-    <h2>3 &middot; What will be checked</h2>
+    <h2>3 &middot; What gets checked</h2>
     <div id="elements"></div>
 
     <div class="row" style="margin-top:14px">
@@ -206,15 +227,14 @@ export const UI_HTML = `<!doctype html>
     </div>
     <p class="sub" style="margin-top:8px">
       Figma canvas coordinates and browser viewport coordinates are unrelated, so
-      every position is measured relative to this container instead &mdash; usually
-      the outermost frame of the section you are checking.
+      every position is measured relative to this container instead.
     </p>
 
     <details>
-      <summary>Advanced &mdash; edit as JSON</summary>
+      <summary>Advanced &mdash; view or paste the config</summary>
       <textarea id="json" spellcheck="false"></textarea>
       <div class="row" style="margin-top:8px">
-        <button id="applyJson" class="ghost" type="button">Apply JSON</button>
+        <button id="applyJson" class="ghost" type="button">Apply</button>
         <span id="jsonNote" class="sub"></span>
       </div>
     </details>
@@ -230,13 +250,7 @@ export const UI_HTML = `<!doctype html>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
 
-  /**
-   * Everything the page knows. Controls render from this; nothing reads a
-   * config value back out of a free-text field.
-   */
-  var state = { elements: [], section: '' };
-
-  /** Rendered layer rows. A real file returns thousands; nobody scrolls those. */
+  var state = { elements: [], section: '', fileKey: '', pages: [] };
   var ROW_LIMIT = 250;
 
   function esc(s) {
@@ -258,11 +272,21 @@ export const UI_HTML = `<!doctype html>
     return body;
   }
 
-  /* ------------------------------------------------------------------ *
-   * Elements
-   * ------------------------------------------------------------------ */
+  /* ---------- viewport presets (rule 2: choose, don't type) ---------- */
 
-  /** Turn a layer name into a slug usable as a data-figma-id attribute. */
+  $('preset').addEventListener('change', function () {
+    var value = $('preset').value;
+    $('customSize').hidden = value !== 'custom';
+    if (value !== 'custom') {
+      var parts = value.split('x');
+      $('vw').value = parts[0];
+      $('vh').value = parts[1];
+    }
+    syncJson();
+  });
+
+  /* ---------- elements ---------- */
+
   function slugify(name) {
     return String(name).toLowerCase()
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'element';
@@ -278,12 +302,16 @@ export const UI_HTML = `<!doctype html>
     return slug;
   }
 
+  function defaultSelector(figmaId) { return '[data-figma-id="' + figmaId + '"]'; }
+
   function addElement(nodeId, name) {
     if (state.elements.some(function (e) { return e.nodeId === nodeId; })) return;
-    var element = { figmaId: uniqueSlug(slugify(name)), nodeId: nodeId, name: name, passes: '' };
-    state.elements.push(element);
-    // The first thing added is almost always the container being checked.
-    if (!state.section) state.section = element.figmaId;
+    var slug = uniqueSlug(slugify(name));
+    state.elements.push({
+      figmaId: slug, nodeId: nodeId, name: name,
+      selector: defaultSelector(slug), passes: ''
+    });
+    if (!state.section) state.section = slug;
     renderElements();
   }
 
@@ -291,31 +319,32 @@ export const UI_HTML = `<!doctype html>
     var box = $('elements');
 
     if (!state.elements.length) {
-      box.innerHTML = '<p class="empty">Nothing selected yet. Browse layers above and ' +
-        'click a row to add it.</p>';
+      box.innerHTML = '<p class="empty">Nothing picked yet. Show the layers above and ' +
+        'click the ones you want checked.</p>';
     } else {
       var rows = state.elements.map(function (e, i) {
         return '<tr>' +
-          '<td><input class="slug" data-edit="figmaId" data-i="' + i + '" value="' + esc(e.figmaId) + '"></td>' +
-          '<td class="muted tiny">' + esc(e.name || '—') + '</td>' +
-          '<td class="mono muted">' + esc(e.nodeId) + '</td>' +
+          '<td>' + esc(e.name || e.figmaId) + '</td>' +
+          '<td><input class="mono" data-edit="selector" data-i="' + i + '" ' +
+            'value="' + esc(e.selector) + '" spellcheck="false"></td>' +
           '<td><select data-edit="passes" data-i="' + i + '">' +
-            '<option value=""' + (e.passes === '' ? ' selected' : '') + '>size, position and type</option>' +
-            '<option value="geometry"' + (e.passes === 'geometry' ? ' selected' : '') + '>size and position only</option>' +
+            '<option value=""' + (e.passes === '' ? ' selected' : '') + '>size, position, type</option>' +
+            '<option value="geometry"' + (e.passes === 'geometry' ? ' selected' : '') + '>size and position</option>' +
             '<option value="text"' + (e.passes === 'text' ? ' selected' : '') + '>type only</option>' +
           '</select></td>' +
-          '<td><button class="icon" data-remove="' + i + '" type="button" ' +
-            'aria-label="Remove ' + esc(e.figmaId) + '">Remove</button></td>' +
+          '<td><button class="icon" data-remove="' + i + '" type="button">Remove</button></td>' +
         '</tr>';
       }).join('');
 
       box.innerHTML =
         '<div class="scroll"><table><thead><tr>' +
-        '<th>Tag on the page</th><th>Figma layer</th><th>Node id</th><th>Compare</th><th></th>' +
+        '<th style="width:28%">Figma layer</th><th>How to find it on the page</th>' +
+        '<th style="width:20%">Compare</th><th></th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-        '<p class="sub" style="margin-top:10px">Each of these must carry a matching ' +
-        '<code>data-figma-id</code> attribute in the page\\'s HTML. Rename the tag on the ' +
-        'left to whatever the markup already uses.</p>';
+        '<p class="sub" style="margin-top:10px">Any CSS selector works &mdash; ' +
+        '<code>.hero__title</code>, <code>main .lop-column</code>. The default looks for a ' +
+        '<code>data-figma-id</code> attribute, which is the most stable option if you can ' +
+        'add one, but an existing class is fine to start with.</p>';
     }
 
     renderSectionChoices();
@@ -323,13 +352,7 @@ export const UI_HTML = `<!doctype html>
     $('run').disabled = state.elements.length === 0;
   }
 
-  /**
-   * The section is chosen from what exists, never typed.
-   *
-   * A free-text field here was the single worst thing about the first version:
-   * it let the section name and the element slugs drift apart, and the failure
-   * came back as a validation error from the server.
-   */
+  /** Rule 3: the section is picked from what exists, never typed. */
   function renderSectionChoices() {
     var select = $('section');
     if (!state.elements.some(function (e) { return e.figmaId === state.section; })) {
@@ -338,9 +361,10 @@ export const UI_HTML = `<!doctype html>
     select.innerHTML = state.elements.length
       ? state.elements.map(function (e) {
           return '<option value="' + esc(e.figmaId) + '"' +
-            (e.figmaId === state.section ? ' selected' : '') + '>' + esc(e.figmaId) + '</option>';
+            (e.figmaId === state.section ? ' selected' : '') + '>' +
+            esc(e.name || e.figmaId) + '</option>';
         }).join('')
-      : '<option value="">add a layer first</option>';
+      : '<option value="">pick a layer first</option>';
     select.disabled = !state.elements.length;
   }
 
@@ -348,14 +372,7 @@ export const UI_HTML = `<!doctype html>
     var field = event.target.getAttribute('data-edit');
     if (!field) return;
     var element = state.elements[Number(event.target.getAttribute('data-i'))];
-    if (!element) return;
-
-    element[field] = event.target.value;
-    if (field === 'figmaId') {
-      // Keep the section pointing at this element if it was the one selected.
-      renderSectionChoices();
-      syncJson();
-    }
+    if (element) { element[field] = event.target.value; syncJson(); }
   });
 
   $('elements').addEventListener('click', function (event) {
@@ -365,11 +382,12 @@ export const UI_HTML = `<!doctype html>
     renderElements();
   });
 
-  $('section').addEventListener('change', function () { state.section = $('section').value; });
+  $('section').addEventListener('change', function () {
+    state.section = $('section').value;
+    syncJson();
+  });
 
-  /* ------------------------------------------------------------------ *
-   * Config
-   * ------------------------------------------------------------------ */
+  /* ---------- config ---------- */
 
   function currentConfig() {
     var config = {
@@ -378,28 +396,20 @@ export const UI_HTML = `<!doctype html>
       viewport: { width: Number($('vw').value), height: Number($('vh').value) },
       elements: state.elements.map(function (e) {
         var out = { figmaId: e.figmaId, nodeId: e.nodeId };
-        // "" means both passes, which is the server's default, so omit it.
+        if (e.selector && e.selector !== defaultSelector(e.figmaId)) out.selector = e.selector;
         if (e.passes) out.passes = [e.passes];
         return out;
       })
     };
-
-    // Omit rather than send empty: an absent key falls back to FIGMA_FILE_KEY
-    // on the server, but an empty string is a validation error.
-    var fileKey = $('fileKey').value.trim();
-    if (fileKey) config.figmaFileKey = fileKey;
-
+    if (state.fileKey) config.figmaFileKey = state.fileKey;
     return config;
   }
 
-  function syncJson() {
-    $('json').value = JSON.stringify(currentConfig(), null, 2);
-  }
+  function syncJson() { $('json').value = JSON.stringify(currentConfig(), null, 2); }
 
   $('applyJson').addEventListener('click', function () {
     try {
-      var config = JSON.parse($('json').value);
-      applyConfig(config);
+      applyConfig(JSON.parse($('json').value));
       $('jsonNote').textContent = 'Applied.';
     } catch (err) {
       $('jsonNote').textContent = 'Not valid JSON: ' + err.message;
@@ -408,16 +418,19 @@ export const UI_HTML = `<!doctype html>
 
   function applyConfig(config) {
     $('url').value = config.url || '';
-    if (config.figmaFileKey) $('fileKey').value = config.figmaFileKey;
+    if (config.figmaFileKey) state.fileKey = config.figmaFileKey;
     if (config.viewport) {
       $('vw').value = config.viewport.width;
       $('vh').value = config.viewport.height;
+      var match = config.viewport.width + 'x' + config.viewport.height;
+      var known = Array.prototype.some.call($('preset').options, function (o) { return o.value === match; });
+      $('preset').value = known ? match : 'custom';
+      $('customSize').hidden = known;
     }
     state.elements = (config.elements || []).map(function (e) {
       return {
-        figmaId: e.figmaId,
-        nodeId: e.nodeId,
-        name: e.name || '',
+        figmaId: e.figmaId, nodeId: e.nodeId, name: e.name || e.figmaId,
+        selector: e.selector || defaultSelector(e.figmaId),
         passes: Array.isArray(e.passes) && e.passes.length === 1 ? e.passes[0] : ''
       };
     });
@@ -425,40 +438,67 @@ export const UI_HTML = `<!doctype html>
     renderElements();
   }
 
-  /* ------------------------------------------------------------------ *
-   * Environment
-   * ------------------------------------------------------------------ */
+  /* ---------- startup: resolve the file in the background ---------- */
 
-  async function loadEnv() {
+  async function start() {
+    renderElements();
     try {
       var health = await api('/api/health');
       if (!health.hasToken) {
-        note($('env'),
-          '<b>No Figma token</b>Set FIGMA_TOKEN in your environment and restart ' +
-          'tovi ui. It is read by the server and never sent to this page.', 'bad');
+        note($('env'), '<b>No Figma token</b>Set FIGMA_TOKEN in your environment and ' +
+          'restart tovi ui. It is read by the server and never sent to this page.', 'bad');
+        $('fileLine').textContent = '';
+        return;
       }
-      if (health.fileKeyFromEnv) $('fileKey').value = health.fileKeyFromEnv;
+      if (health.fileKeyFromEnv) state.fileKey = health.fileKeyFromEnv;
 
       var loaded = await api('/api/config');
       if (loaded.config) applyConfig(loaded.config);
-      else renderElements();
-      if (loaded.error) note($('env'), esc(loaded.error), 'bad');
+
+      await loadPages();
     } catch (err) {
       note($('env'), esc(err.message), 'bad');
-      renderElements();
     }
   }
 
-  /* ------------------------------------------------------------------ *
-   * Layers
-   * ------------------------------------------------------------------ */
+  /** Fetch the file's pages so the page control is a choice, not a guess. */
+  async function loadPages() {
+    try {
+      var data = await api('/api/layers?depth=1' +
+        (state.fileKey ? '&file=' + encodeURIComponent(state.fileKey) : ''));
+      state.pages = data.pages || [];
+      $('lpage').innerHTML = '<option value="">All pages</option>' +
+        state.pages.map(function (p) {
+          return '<option value="' + esc(p) + '">' + esc(p) + '</option>';
+        }).join('');
+      $('fileLine').innerHTML = 'Figma file: <b>' + esc(data.fileName) + '</b> · ' +
+        state.pages.length + ' pages ' +
+        '<button class="link" id="changeFile" type="button">use a different file</button>';
+      $('changeFile').addEventListener('click', changeFile);
+    } catch (err) {
+      $('fileLine').innerHTML = '<span class="muted">Could not read the Figma file: ' +
+        esc(err.message) + '</span> ' +
+        '<button class="link" id="changeFile" type="button">use a different file</button>';
+      $('changeFile').addEventListener('click', changeFile);
+    }
+  }
+
+  function changeFile() {
+    var key = window.prompt('Figma file key — the segment after /design/ in the file URL', state.fileKey);
+    if (key === null) return;
+    state.fileKey = key.trim();
+    $('fileLine').textContent = 'Loading the Figma file…';
+    loadPages();
+  }
+
+  /* ---------- layers ---------- */
 
   $('browse').addEventListener('click', async function () {
     var box = $('layers');
     box.innerHTML = '<p class="sub" style="margin-top:12px">Loading…</p>';
     var q = new URLSearchParams({
-      file: $('fileKey').value.trim(),
-      page: $('lpage').value.trim(),
+      file: state.fileKey,
+      page: $('lpage').value,
       search: $('lsearch').value.trim(),
       depth: $('ldepth').value
     });
@@ -471,40 +511,36 @@ export const UI_HTML = `<!doctype html>
 
   function renderLayers(data) {
     if (!data.rows.length) {
-      $('layers').innerHTML = '<p class="sub" style="margin-top:12px">No layers matched. ' +
-        'Pages in this file: ' + esc(data.pages.join(', ')) + '</p>';
+      $('layers').innerHTML = '<p class="sub" style="margin-top:12px">No layers matched.</p>';
       return;
     }
 
-    var shown = data.rows.slice(0, ROW_LIMIT);
-    var rows = shown.map(function (row) {
+    var rows = data.rows.slice(0, ROW_LIMIT).map(function (row) {
       // Figma reports no box for pages and for hidden or detached nodes. They
-      // cannot be measured, so they cannot be compared — say so here rather
-      // than letting the run fail on them later.
+      // cannot be measured, so they cannot be compared.
       var measurable = row.width !== undefined && row.height !== undefined;
       var already = state.elements.some(function (e) { return e.nodeId === row.nodeId; });
       var size = measurable ? Math.round(row.width) + '×' + Math.round(row.height)
-        : '<span class="tiny">cannot be measured</span>';
-      var cls = 'pick' + (measurable ? (already ? ' added' : '') : ' disabled');
+        : '<span class="tiny">no size</span>';
 
-      return '<tr class="' + cls + '" data-node="' + esc(row.nodeId) + '"' +
-        ' data-name="' + esc(row.name) + '" data-ok="' + (measurable ? '1' : '') + '">' +
-        '<td class="mono">' + esc(row.nodeId) + '</td>' +
-        '<td class="mono muted tiny">' + esc(row.type) + '</td>' +
+      return '<tr class="pick' + (measurable ? (already ? ' added' : '') : ' disabled') + '"' +
+        ' data-node="' + esc(row.nodeId) + '" data-name="' + esc(row.name) + '"' +
+        ' data-ok="' + (measurable ? '1' : '') + '">' +
         '<td>' + '&nbsp;'.repeat(row.depth * 3) + esc(row.name) +
-          (already ? ' <span class="muted tiny">· added</span>' : '') + '</td>' +
+          (already ? ' <span class="muted tiny">· picked</span>' : '') + '</td>' +
+        '<td class="mono muted tiny">' + esc(row.type) + '</td>' +
         '<td class="mono muted tiny">' + size + '</td></tr>';
     }).join('');
 
-    var caption = esc(data.fileName) + ' — ' + data.rows.length + ' layers';
+    var caption = data.rows.length + ' layers';
     caption += data.rows.length > ROW_LIMIT
-      ? ', showing the first ' + ROW_LIMIT + '. Narrow with a page, a name, or a smaller depth.'
-      : '. Click a row to add it.';
+      ? ', showing the first ' + ROW_LIMIT + ' — narrow by page, name or depth.'
+      : ' — click the ones you want checked.';
 
     $('layers').innerHTML =
-      '<p class="sub" style="margin:12px 0 6px">' + caption + '</p>' +
-      '<div class="scroll"><table><thead><tr>' +
-      '<th>Node id</th><th>Type</th><th>Layer</th><th>Size</th>' +
+      '<p class="sub" style="margin:12px 0 0">' + caption + '</p>' +
+      '<div class="listpane"><table><thead><tr>' +
+      '<th>Layer</th><th style="width:18%">Type</th><th style="width:18%">Size</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
@@ -512,19 +548,16 @@ export const UI_HTML = `<!doctype html>
     var tr = event.target.closest('.pick');
     if (!tr) return;
     if (!tr.getAttribute('data-ok')) {
-      note($('layers').querySelector('p') ? $('layers') : $('layers'),
-        '<b>' + esc(tr.dataset.name) + ' cannot be measured</b>' +
-        'Figma reports no size for it — pages, hidden layers and detached nodes have ' +
-        'no box, so there is nothing to compare. Pick a frame inside it instead.', 'bad');
+      window.alert(tr.dataset.name + ' has no size in Figma — pages, hidden layers and ' +
+        'detached nodes cannot be measured, so there is nothing to compare. ' +
+        'Pick a frame inside it instead.');
       return;
     }
     addElement(tr.dataset.node, tr.dataset.name);
     tr.classList.add('added');
   });
 
-  /* ------------------------------------------------------------------ *
-   * Run
-   * ------------------------------------------------------------------ */
+  /* ---------- run ---------- */
 
   $('run').addEventListener('click', async function () {
     var button = $('run');
@@ -536,7 +569,6 @@ export const UI_HTML = `<!doctype html>
     try {
       var config = currentConfig();
       if (!config.url) throw new Error('Enter the live URL to check.');
-
       var data = await api('/api/check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -553,19 +585,25 @@ export const UI_HTML = `<!doctype html>
 
   function renderReport(report) {
     var s = report.summary;
+    var byId = {};
+    state.elements.forEach(function (e) { byId[e.figmaId] = e; });
 
-    // The most common first-run outcome by far: the page is not tagged yet.
-    // Reported as one fact rather than N identical failures.
     var missing = report.elements.filter(function (el) {
       return el.issues.some(function (i) { return i.property === 'missingInLive'; });
     });
+
     var banner = '';
     if (missing.length === report.elements.length && report.elements.length) {
-      banner = '<div class="note bad"><b>Nothing on the page is tagged yet</b>' +
-        'None of the ' + report.elements.length + ' elements were found. Each one needs a ' +
-        '<code>data-figma-id</code> attribute in the page\\'s HTML matching the tag ' +
-        'shown in the table above. Until the markup carries them, there is nothing ' +
-        'to compare against.</div>';
+      banner = '<div class="note bad"><b>None of these were found on the page</b>' +
+        'The selectors matched nothing. Open the page, inspect the element you meant, ' +
+        'and put its actual selector in the table above — or add a ' +
+        '<code>data-figma-id</code> attribute to the markup.</div>';
+    } else if (missing.length) {
+      banner = '<div class="note"><b>' + missing.length + ' of ' + report.elements.length +
+        ' were not found</b>' + missing.map(function (el) {
+          var e = byId[el.figmaId];
+          return '<code>' + esc(e ? e.selector : el.figmaId) + '</code>';
+        }).join(', ') + '</div>';
     }
 
     var head =
@@ -580,6 +618,7 @@ export const UI_HTML = `<!doctype html>
 
     var sections = report.elements.filter(function (el) { return el.issues.length; })
       .map(function (el) {
+        var e = byId[el.figmaId];
         var rows = el.issues.map(function (i) {
           var delta = i.delta === undefined ? '—'
             : (i.delta > 0 ? '+' : '') + i.delta +
@@ -593,7 +632,7 @@ export const UI_HTML = `<!doctype html>
             '<td class="mono">' + delta + '</td></tr>';
         }).join('');
 
-        return '<h2 style="margin-top:18px">' + esc(el.figmaId) + '</h2>' +
+        return '<h2 style="margin-top:18px">' + esc(e ? e.name : el.figmaId) + '</h2>' +
           '<div class="scroll"><table><thead><tr>' +
           '<th></th><th>Property</th><th>Design</th><th>Live</th><th>Delta / tol</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
@@ -603,7 +642,7 @@ export const UI_HTML = `<!doctype html>
       (sections || '<p class="sub" style="margin-top:14px">Everything matched within tolerance.</p>');
   }
 
-  loadEnv();
+  start();
 })();
 </script>
 </body>

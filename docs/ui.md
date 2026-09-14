@@ -25,13 +25,42 @@ first-time user is not expected to have one yet.
 
 ## What it does
 
-- **Run a check** — URL, file key, viewport, section container, and the element
-  list. Results render as a table per element: property, design value, live
-  value, and the delta against the tolerance it was tested against.
-- **Browse layers** — the same discovery as [`tovi layers`](tagging.md#or-list-them-all-at-once),
-  filtered by page, name and depth. **Click a row to add it to the element
-  list**, with a slug derived from the layer name. This is the part that
-  replaces hand-authoring.
+Three steps, in order:
+
+1. **The page** — the URL and a screen size, chosen from presets. The Figma file
+   is resolved in the background from `FIGMA_FILE_KEY`; you only supply a key if
+   you want a different file.
+2. **Pick the layers** — the Figma page is a dropdown populated from the file.
+   Click the layers you want checked. Layers Figma cannot measure (pages, hidden
+   and detached nodes) are not selectable and say why.
+3. **What gets checked** — one row per layer, with **how to find it on the live
+   page** and what to compare. The section container is a dropdown over the
+   layers you picked, so it cannot name something absent.
+
+Results render per element: property, design value, live value, and the delta
+against the tolerance it was tested against.
+
+## You do not have to tag the page first
+
+Each row carries a CSS selector. It defaults to `[data-figma-id="…"]`, which is
+the most stable option, but **any selector works**:
+
+```
+.hero__title
+main .lop-column
+#main-header .logo-wrapper
+```
+
+That matters on an existing site. Adding `data-figma-id` to a theme means a
+deploy, and until it lands there is nothing to compare — so the first run would
+otherwise have to wait on a code change. Pointing at classes the markup already
+has gets you a real comparison immediately.
+
+The trade is stability: a class can be renamed in a redesign without anyone
+thinking about TOVI, and then the check reports `missingInLive` for a reason
+that is not a design defect. Use selectors to get started and to find out
+whether the findings are worth trusting; move to `data-figma-id` for the checks
+you intend to keep.
 
 ## Why it is a server
 
