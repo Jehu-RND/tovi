@@ -26,6 +26,20 @@ Severity is **derived, not judged**:
 | `warning` | Advisory — copy drift, a missing optional property | no |
 | `info` | Context — most notably a `skipped` comparison | no |
 
+## Which element a finding is about
+
+Every element carries `describes` — what the selector actually matched, in the
+form devtools shows it:
+
+```json
+{ "figmaId": "more-content", "describes": "section.more-content · 342×122" }
+```
+
+The selector records what was looked for; this records what was found. It
+appears in the HTML report's element header, in the terminal above that
+element's findings, and in the UI. Absent when nothing was matched, so a
+`missingInLive` element never claims an address it does not have.
+
 ## What a passing run shows
 
 A green run lists what it verified, not just that it passed. Each element

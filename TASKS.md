@@ -6,7 +6,7 @@ _Last updated: 2026-09-14_
 
 | Status | Count |
 | --- | --- |
-| Done | 44 |
+| Done | 46 |
 | In Progress | 2 |
 | Todo | 18 |
 
@@ -234,6 +234,8 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 | T-34 | **A passing run shows what it verified.** New `Check` records every property compared, with both values, delta and tolerance, surfaced in the UI, the HTML report and the terminal summary. Invariant 3 applied to green runs, not just red ones |
 | T-35 | **Live progress during a run.** Six stages streamed over SSE (`POST /api/check/stream`), all listed from the start so a stall points at the step it stalled on. Observational only — the report is byte-identical whether or not anything listens |
 | T-36 | **Regression tests for the served UI script.** The page's JS lives in a template literal; two escaping bugs shipped a page whose script died on parse, and nothing caught either. Two tests now compile every inline script from the served page |
+| T-37 | **Findings name the element they are about.** The extractor records what the selector actually matched (`section.more-content · 342×122`), carried on every `ElementReport` and shown in the UI, the HTML report and the terminal. A delta is not actionable until the reader knows which `div` it concerns |
+| T-38 | **Result tabs — all, passed, failed, errors, warnings.** Filters the report already in hand: no browser, no Figma call, nothing re-measured. Passed/failed are element-level, errors/warnings are finding-level; `properties compared` stays a number, since there is nothing to filter down to |
 | T-24 | **`tovi ui` — local web UI.** Loopback-only server, token never reaches the browser. Click a Figma layer to add an element. Calls the same `executeRun()` the CLI does, via a refactor that gave both surfaces one pipeline |
 
 ---

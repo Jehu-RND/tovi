@@ -356,7 +356,7 @@ export async function executeRun(
     ),
   ];
 
-  const runReport = buildRunReport(config, issues, timestamp, checks);
+  const runReport = buildRunReport(config, issues, timestamp, checks, extraction.styles);
   report({ phase: 'report', fraction: 1, done: total, total,
     message: `${checks.length} propert${checks.length === 1 ? 'y' : 'ies'} compared.` });
 

@@ -181,6 +181,13 @@ export interface LiveStyles {
   figmaId: string;
   /** CSS selector that located the element, for reporting. */
   selector: string;
+  /**
+   * What the matched element actually is: `section.more-content`.
+   *
+   * The selector says what was looked for; this says what was found. Absent
+   * only for a measurement taken before this existed.
+   */
+  describes?: string;
 
   /** getBoundingClientRect(), in *viewport* coordinates. Not directly comparable. */
   boundingRect: Rect;

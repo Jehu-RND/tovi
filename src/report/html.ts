@@ -106,6 +106,11 @@ export function renderElementSection(element: ElementReport): string {
   const meta: string[] = [];
   if (nodeId !== undefined) meta.push(`node <code>${escapeHtml(nodeId)}</code>`);
   if (selector !== undefined) meta.push(`selector <code>${escapeHtml(selector)}</code>`);
+  // What was actually matched, not just what was looked for. A delta is only
+  // actionable once the reader knows which element in the DOM it is about.
+  if (element.describes !== undefined) {
+    meta.push(`matched <code>${escapeHtml(element.describes)}</code>`);
+  }
   if (!element.paired) meta.push('<span class="muted">unpaired</span>');
 
   const checks = element.checks ?? [];
@@ -310,6 +315,11 @@ export function renderTextSummary(report: RunReport): string {
   for (const element of report.elements) {
     compared += (element.checks ?? []).length;
     if (element.issues.length === 0) continue;
+    // Name the element once, above its findings, rather than repeating an
+    // address on every line.
+    if (element.describes !== undefined) {
+      lines.push(`  ${element.figmaId}  ${element.describes}`);
+    }
     for (const issue of element.issues) {
       const detail = issue.detail === undefined ? '' : `.${issue.detail}`;
       const delta = issue.delta === undefined ? '' : `  delta ${issue.delta > 0 ? '+' : ''}${issue.delta}`;

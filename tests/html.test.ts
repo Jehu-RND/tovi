@@ -185,3 +185,43 @@ describe('screenshot embedding', () => {
     expect(renderHtmlReport(report())).not.toContain('class="capture"');
   });
 });
+
+/**
+ * A delta is not actionable until the reader knows which element in the DOM it
+ * is about. The selector says what was looked for; `describes` says what was
+ * found, which is the address a developer actually needs.
+ */
+describe('the report names the element that was matched', () => {
+  it('shows what the selector actually matched', () => {
+    const html = renderElementSection({
+      figmaId: 'more-content',
+      config: { figmaId: 'more-content', nodeId: '3:658', selector: '.more-content' },
+      paired: true,
+      describes: 'section.more-content · 342×122',
+      issues: [],
+      errorCount: 0,
+      warningCount: 0,
+    });
+    expect(html).toContain('section.more-content · 342×122');
+  });
+
+  it('escapes it, since a class name is untrusted page content', () => {
+    const html = renderElementSection({
+      figmaId: 'x',
+      paired: true,
+      describes: 'div.<script>alert(1)</script>',
+      issues: [],
+      errorCount: 0,
+      warningCount: 0,
+    });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('omits the line entirely when nothing was matched', () => {
+    const html = renderElementSection({
+      figmaId: 'x', paired: false, issues: [], errorCount: 0, warningCount: 0,
+    });
+    expect(html).not.toContain('matched');
+  });
+});

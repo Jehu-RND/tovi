@@ -133,6 +133,37 @@ that is not a design defect. Use selectors to get started and to find out
 whether the findings are worth trusting; move to `data-figma-id` for the checks
 you intend to keep.
 
+## Reading the results
+
+Each element names **what was looked for and what was found**:
+
+```
+.more-content  →  section.more-content · 342×122  →  node 3:658
+```
+
+The selector is what you wrote; the middle is the element the page actually
+handed back, in the form devtools shows it. A finding that says a height is 15px
+out is only actionable once you know which `div` that is, and a layer called
+"More content" does not say.
+
+Five tabs filter the same report without re-running anything:
+
+| Tab | Shows |
+| --- | --- |
+| All | Every element, findings and verified properties together |
+| Passed | Elements with no errors |
+| Failed | Elements with at least one error |
+| Errors | Only the error rows |
+| Warnings | Only the warning rows |
+
+Passed and failed are about *elements*; errors and warnings are about
+individual *findings*. Both readings are useful and they do not nest, so each
+tab carries whichever its name implies. The `properties compared` figure stays
+a number rather than a tab — there is nothing useful to filter down to.
+
+On the two issue-level tabs the "also verified" tables are dropped: the
+question there is what is wrong, not what else was checked.
+
 ## Watching a run
 
 A run launches a browser and calls the Figma API, so ten seconds is normal. The

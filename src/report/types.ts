@@ -108,6 +108,14 @@ export interface ElementReport {
   config?: ElementConfig;
   /** True when both a Figma node and a live element were found. */
   paired: boolean;
+  /**
+   * What the live element actually is: `section.more-content · 342×107`.
+   *
+   * The address a developer needs. A finding that says a height is 15px out
+   * is only actionable once you know which element in the DOM it is about,
+   * and the selector alone does not say what it matched.
+   */
+  describes?: string;
   issues: Issue[];
   /**
    * Every property compared for this element, in comparison order. Present

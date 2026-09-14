@@ -103,6 +103,15 @@ export interface RawLiveStyles {
   lineHeight: number;
   letterSpacing: number;
   textContent: string;
+  /**
+   * What the matched element actually is: `section.more-content`.
+   *
+   * A selector says what was looked for; this says what was found. When a
+   * check fails, the next question is always "which element is that in the
+   * DOM" — without this the answer lives only in the author's head, and a
+   * report handed to someone else is a list of numbers with no address.
+   */
+  describes: string;
 }
 
 /** One element's outcome from the single measurement pass. */
@@ -169,6 +178,14 @@ function measureAll(targets: Array<{ figmaId: string; selector: string }>): RawM
     const rect = element.getBoundingClientRect();
     const cs = window.getComputedStyle(element);
 
+    // tag#id.class, the way it reads in devtools. Three classes is enough to
+    // recognise an element and short enough to sit in a table cell.
+    var tag = element.tagName.toLowerCase();
+    var elementId = element.id !== '' ? '#' + element.id : '';
+    var classes = typeof element.className === 'string' && element.className.trim() !== ''
+      ? '.' + element.className.trim().split(/\s+/).slice(0, 3).join('.')
+      : '';
+
     // border-radius percentages resolve against the box's own dimensions.
     const radiusBasisX = rect.width;
     const radiusBasisY = rect.height;
@@ -178,6 +195,7 @@ function measureAll(targets: Array<{ figmaId: string; selector: string }>): RawM
       status: 'ok',
       matchCount: 1,
       styles: {
+        describes: tag + elementId + classes,
         boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
         padding: {
           top: toPx(cs.paddingTop, rect.height),
@@ -306,6 +324,9 @@ export function normalizeLiveStyles(raw: RawLiveStyles, figmaId: string, selecto
   return {
     figmaId,
     selector,
+    ...(raw.describes !== undefined && raw.describes !== ''
+      ? { describes: raw.describes }
+      : {}),
     boundingRect: raw.boundingRect,
     padding: raw.padding,
     cornerRadius: raw.cornerRadius,

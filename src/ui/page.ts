@@ -173,6 +173,33 @@ export const UI_HTML = `<!doctype html>
   .step.now { color: var(--ink); font-weight: 600; }
   .step.bad { color: var(--error); }
   .step.wait { opacity: .5; }
+  .tabs {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    background: none; border: 0; border-bottom: 2px solid transparent;
+    color: var(--ink-2); font-weight: 500; font-size: 13px;
+    padding: 7px 12px; border-radius: 6px 6px 0 0; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); background: var(--sunken); }
+  .tab[aria-selected="true"] {
+    color: var(--accent); border-bottom-color: var(--accent); font-weight: 600;
+  }
+  .tabn {
+    font-variant-numeric: tabular-nums; font-size: 11px;
+    color: var(--ink-2); margin-left: 2px;
+  }
+  .tab[aria-selected="true"] .tabn { color: var(--accent); }
+  .where {
+    margin: 3px 0 0; font-size: 12px; display: flex;
+    flex-wrap: wrap; gap: 6px; align-items: baseline;
+  }
+  .where code { background: var(--sunken); padding: 1px 6px; border-radius: 4px; }
+  .found {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    color: var(--ok); background: var(--sunken); padding: 1px 6px; border-radius: 4px;
+  }
   .spin {
     display: inline-block; width: 10px; height: 10px; border-radius: 50%;
     border: 2px solid var(--accent); border-right-color: transparent;
@@ -180,7 +207,34 @@ export const UI_HTML = `<!doctype html>
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
-    .spin { animation: none; }
+    .tabs {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    background: none; border: 0; border-bottom: 2px solid transparent;
+    color: var(--ink-2); font-weight: 500; font-size: 13px;
+    padding: 7px 12px; border-radius: 6px 6px 0 0; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); background: var(--sunken); }
+  .tab[aria-selected="true"] {
+    color: var(--accent); border-bottom-color: var(--accent); font-weight: 600;
+  }
+  .tabn {
+    font-variant-numeric: tabular-nums; font-size: 11px;
+    color: var(--ink-2); margin-left: 2px;
+  }
+  .tab[aria-selected="true"] .tabn { color: var(--accent); }
+  .where {
+    margin: 3px 0 0; font-size: 12px; display: flex;
+    flex-wrap: wrap; gap: 6px; align-items: baseline;
+  }
+  .where code { background: var(--sunken); padding: 1px 6px; border-radius: 4px; }
+  .found {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    color: var(--ok); background: var(--sunken); padding: 1px 6px; border-radius: 4px;
+  }
+  .spin { animation: none; }
     .bar span { transition: none; }
   }
 </style>
@@ -289,7 +343,7 @@ export const UI_HTML = `<!doctype html>
   var $ = function (id) { return document.getElementById(id); };
 
   var state = { elements: [], section: '', fileKey: '', pages: [], probe: {},
-                layerRows: [], pickNote: '' };
+                layerRows: [], pickNote: '', report: null, resultTab: 'all' };
   var ROW_LIMIT = 250;
 
   function esc(s) {
@@ -955,8 +1009,34 @@ export const UI_HTML = `<!doctype html>
     }
   });
 
-  function renderReport(report) {
+  /**
+   * The result views, and what each one keeps.
+   *
+   * Passed/failed are about elements; errors/warnings are about individual
+   * findings. Both readings are useful and they do not nest, so the tabs carry
+   * whichever the name implies rather than forcing one shape on both.
+   */
+  var RESULT_TABS = [
+    { key: 'all', label: 'All' },
+    { key: 'passed', label: 'Passed' },
+    { key: 'failed', label: 'Failed' },
+    { key: 'errors', label: 'Errors' },
+    { key: 'warnings', label: 'Warnings' }
+  ];
+
+  function tabCount(report, key) {
     var s = report.summary;
+    if (key === 'all') return s.elementsChecked;
+    if (key === 'passed') return s.elementsPassed;
+    if (key === 'failed') return s.elementsFailed;
+    if (key === 'errors') return s.errorCount;
+    return s.warningCount;
+  }
+
+  function renderReport(report) {
+    state.report = report;
+    var s = report.summary;
+    var tab = state.resultTab || 'all';
     var byId = {};
     state.elements.forEach(function (e) { byId[e.figmaId] = e; });
 
@@ -981,6 +1061,12 @@ export const UI_HTML = `<!doctype html>
         }).join(', ') + '</div>';
     }
 
+    // "properties compared" is context, not a view — there is nothing useful
+    // to filter down to, so it stays a number and never becomes a tab.
+    var compared = report.elements.reduce(function (n, el) {
+      return n + ((el.checks || []).length);
+    }, 0);
+
     var head =
       '<p class="verdict ' + report.status + '">' + report.status.toUpperCase() + '</p>' +
       '<div class="stats">' +
@@ -989,13 +1075,18 @@ export const UI_HTML = `<!doctype html>
         '<span class="stat"><b>' + s.elementsFailed + '</b>failed</span>' +
         '<span class="stat"><b>' + s.errorCount + '</b>errors</span>' +
         '<span class="stat"><b>' + s.warningCount + '</b>warnings</span>' +
-        '<span class="stat"><b>' + report.elements.reduce(function (n, el) {
-          return n + ((el.checks || []).length);
-        }, 0) + '</b>properties compared</span>' +
-      '</div>' + banner;
+        '<span class="stat"><b>' + compared + '</b>properties compared</span>' +
+      '</div>' + banner +
+      '<div class="tabs" role="tablist">' +
+        RESULT_TABS.map(function (t) {
+          return '<button class="tab" role="tab" data-tab="' + t.key + '"' +
+            ' aria-selected="' + (tab === t.key) + '">' + t.label +
+            ' <span class="tabn">' + tabCount(report, t.key) + '</span></button>';
+        }).join('') +
+      '</div>';
 
     function deltaCell(d, tol) {
-      if (d === undefined) return '\u2014';
+      if (d === undefined) return '—';
       return (d > 0 ? '+' : '') + d +
         (tol === undefined ? '' : ' <span class="muted">/ ' + tol + '</span>');
     }
@@ -1007,14 +1098,23 @@ export const UI_HTML = `<!doctype html>
         '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
 
-    // Every element is rendered, passing or not. A run that verified forty
-    // properties and one that verified none both used to print the same three
-    // words, which is the one thing this tool must never do.
-    var sections = report.elements.map(function (el) {
+    var sections = report.elements.filter(function (el) {
+      if (tab === 'passed') return el.errorCount === 0;
+      if (tab === 'failed') return el.errorCount > 0;
+      if (tab === 'errors') return el.errorCount > 0;
+      if (tab === 'warnings') return el.warningCount > 0;
+      return true;
+    }).map(function (el) {
       var e = byId[el.figmaId];
       var checks = el.checks || [];
 
-      var issueRows = el.issues.map(function (i) {
+      var issues = el.issues.filter(function (i) {
+        if (tab === 'errors') return i.severity === 'error';
+        if (tab === 'warnings') return i.severity === 'warning';
+        return true;
+      });
+
+      var issueRows = issues.map(function (i) {
         return '<tr>' +
           '<td><span class="chip ' + i.severity + '">' + i.severity + '</span></td>' +
           '<td class="mono">' + esc(i.property) +
@@ -1024,20 +1124,35 @@ export const UI_HTML = `<!doctype html>
           '<td class="mono">' + deltaCell(i.delta, i.tolerance) + '</td></tr>';
       }).join('');
 
-      var passRows = checks.filter(function (c) { return c.ok; }).map(function (c) {
-        return '<tr>' +
-          '<td><span class="hit ok">ok</span></td>' +
-          '<td class="mono muted">' + esc(c.property) +
-            (c.detail ? '<br><span class="muted tiny">' + esc(c.detail) + '</span>' : '') + '</td>' +
-          '<td class="mono muted">' + esc(c.expected) + '</td>' +
-          '<td class="mono muted">' + esc(c.actual) + '</td>' +
-          '<td class="mono muted">' + deltaCell(c.delta, c.tolerance) + '</td></tr>';
-      }).join('');
+      // The verified list is context for a finding, so the issue-level tabs
+      // drop it — on those views the question is "what is wrong", not "what
+      // else was checked".
+      var passRows = (tab === 'errors' || tab === 'warnings') ? '' :
+        checks.filter(function (c) { return c.ok; }).map(function (c) {
+          return '<tr>' +
+            '<td><span class="hit ok">ok</span></td>' +
+            '<td class="mono muted">' + esc(c.property) +
+              (c.detail ? '<br><span class="muted tiny">' + esc(c.detail) + '</span>' : '') + '</td>' +
+            '<td class="mono muted">' + esc(c.expected) + '</td>' +
+            '<td class="mono muted">' + esc(c.actual) + '</td>' +
+            '<td class="mono muted">' + deltaCell(c.delta, c.tolerance) + '</td></tr>';
+        }).join('');
+
+      // The address a developer needs: what was looked for, and what was
+      // found. A delta is not actionable until you know which element it is
+      // about, and the layer name alone does not say.
+      var where = [];
+      var selector = e ? e.selector : (el.config && el.config.selector);
+      if (selector) where.push('<code>' + esc(selector) + '</code>');
+      if (el.describes) where.push('<span class="found">' + esc(el.describes) + '</span>');
+      var nodeId = el.config && el.config.nodeId;
+      if (nodeId) where.push('<span class="muted">node ' + esc(nodeId) + '</span>');
 
       var title = '<h2 style="margin-top:18px">' + esc(e ? e.name : el.figmaId) +
         ' <span class="muted tiny" style="text-transform:none;letter-spacing:0">' +
         checks.length + (checks.length === 1 ? ' property' : ' properties') + ' compared' +
-        '</span></h2>';
+        '</span></h2>' +
+        (where.length ? '<p class="where">' + where.join(' <span class="muted">&rarr;</span> ') + '</p>' : '');
 
       if (!issueRows && !passRows) {
         return title + '<p class="sub">Nothing was compared for this element.</p>';
@@ -1053,8 +1168,18 @@ export const UI_HTML = `<!doctype html>
       return body;
     }).join('');
 
-    $('results').innerHTML = head + sections;
+    $('results').innerHTML = head +
+      (sections || '<p class="empty" style="margin-top:14px">Nothing in this view.</p>');
   }
+
+  // Switching a tab re-renders the report already in hand: no browser, no
+  // Figma call, nothing re-measured.
+  $('results').addEventListener('click', function (event) {
+    var tab = event.target.closest('[data-tab]');
+    if (!tab || !state.report) return;
+    state.resultTab = tab.getAttribute('data-tab');
+    renderReport(state.report);
+  });
 
   start();
 })();
