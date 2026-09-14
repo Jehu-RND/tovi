@@ -6,7 +6,7 @@
  * so the two passes stay consistent about rounding, formatting, and severity.
  */
 
-import type { Issue, IssueProperty, PassName, Severity } from '../report/types.js';
+import type { Check, Issue, IssueProperty, PassName, Severity } from '../report/types.js';
 
 /** Deltas are rounded to this many decimals before display and comparison. */
 const PRECISION = 3;
@@ -18,6 +18,56 @@ export interface NumericIssueOptions {
   detail?: string;
   /** Defaults to 'error'. */
   severity?: Severity;
+  /**
+   * When supplied, the comparison is appended here whether it passed or not.
+   *
+   * An out-parameter rather than a second return value on purpose: it leaves
+   * every existing caller and all of the pass tests untouched, so those tests
+   * keep standing as evidence that collecting checks changed no verdict.
+   * Order is append-order, which is comparison order, which keeps a report
+   * byte-identical between runs.
+   */
+  checks?: Check[] | undefined;
+}
+
+/** Append a passing check, for a comparison that produced no Issue. */
+export function notePass(
+  checks: Check[] | undefined,
+  figmaId: string,
+  pass: PassName,
+  property: IssueProperty,
+  expected: string,
+  actual: string,
+  options: { detail?: string; delta?: number; tolerance?: number } = {},
+): void {
+  if (checks === undefined) return;
+  checks.push({
+    figmaId,
+    pass,
+    property,
+    ok: true,
+    expected,
+    actual,
+    ...(options.delta !== undefined ? { delta: round(options.delta) } : {}),
+    ...(options.tolerance !== undefined ? { tolerance: options.tolerance } : {}),
+    ...(options.detail !== undefined ? { detail: options.detail } : {}),
+  });
+}
+
+/** Append the check that corresponds to an Issue that was just raised. */
+export function noteIssue(checks: Check[] | undefined, issue: Issue): void {
+  if (checks === undefined) return;
+  checks.push({
+    figmaId: issue.figmaId,
+    pass: issue.pass,
+    property: issue.property,
+    ok: false,
+    expected: issue.expected,
+    actual: issue.actual,
+    ...(issue.delta !== undefined ? { delta: issue.delta } : {}),
+    ...(issue.tolerance !== undefined ? { tolerance: issue.tolerance } : {}),
+    ...(issue.detail !== undefined ? { detail: issue.detail } : {}),
+  });
 }
 
 /** Round to PRECISION decimals, dropping trailing zeroes. */
@@ -48,10 +98,19 @@ export function compareNumeric(
   options: NumericIssueOptions = {},
 ): Issue | undefined {
   const delta = round(actual - expected);
-  if (Math.abs(delta) <= tolerance) return undefined;
-
   const unit = options.unit ?? 'px';
-  return {
+
+  if (Math.abs(delta) <= tolerance) {
+    notePass(options.checks, figmaId, pass, property, formatValue(expected, unit),
+      formatValue(actual, unit), {
+        delta,
+        tolerance,
+        ...(options.detail !== undefined ? { detail: options.detail } : {}),
+      });
+    return undefined;
+  }
+
+  const issue: Issue = {
     figmaId,
     pass,
     property,
@@ -62,6 +121,8 @@ export function compareNumeric(
     tolerance,
     ...(options.detail !== undefined ? { detail: options.detail } : {}),
   };
+  noteIssue(options.checks, issue);
+  return issue;
 }
 
 /**

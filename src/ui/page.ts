@@ -874,32 +874,71 @@ export const UI_HTML = `<!doctype html>
         '<span class="stat"><b>' + s.elementsFailed + '</b>failed</span>' +
         '<span class="stat"><b>' + s.errorCount + '</b>errors</span>' +
         '<span class="stat"><b>' + s.warningCount + '</b>warnings</span>' +
+        '<span class="stat"><b>' + report.elements.reduce(function (n, el) {
+          return n + ((el.checks || []).length);
+        }, 0) + '</b>properties compared</span>' +
       '</div>' + banner;
 
-    var sections = report.elements.filter(function (el) { return el.issues.length; })
-      .map(function (el) {
-        var e = byId[el.figmaId];
-        var rows = el.issues.map(function (i) {
-          var delta = i.delta === undefined ? '—'
-            : (i.delta > 0 ? '+' : '') + i.delta +
-              (i.tolerance === undefined ? '' : ' <span class="muted">/ ' + i.tolerance + '</span>');
-          return '<tr>' +
-            '<td><span class="chip ' + i.severity + '">' + i.severity + '</span></td>' +
-            '<td class="mono">' + esc(i.property) +
-              (i.detail ? '<br><span class="muted tiny">' + esc(i.detail) + '</span>' : '') + '</td>' +
-            '<td class="mono">' + esc(i.expected) + '</td>' +
-            '<td class="mono">' + esc(i.actual) + '</td>' +
-            '<td class="mono">' + delta + '</td></tr>';
-        }).join('');
+    function deltaCell(d, tol) {
+      if (d === undefined) return '\u2014';
+      return (d > 0 ? '+' : '') + d +
+        (tol === undefined ? '' : ' <span class="muted">/ ' + tol + '</span>');
+    }
 
-        return '<h2 style="margin-top:18px">' + esc(e ? e.name : el.figmaId) + '</h2>' +
-          '<div class="scroll"><table><thead><tr>' +
-          '<th></th><th>Property</th><th>Design</th><th>Live</th><th>Delta / tol</th>' +
-          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    function tableOf(rows) {
+      return '<div class="scroll"><table><thead><tr>' +
+        '<th style="width:9%"></th><th>Property</th><th>Design</th><th>Live</th>' +
+        '<th style="width:16%">Delta / tol</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+
+    // Every element is rendered, passing or not. A run that verified forty
+    // properties and one that verified none both used to print the same three
+    // words, which is the one thing this tool must never do.
+    var sections = report.elements.map(function (el) {
+      var e = byId[el.figmaId];
+      var checks = el.checks || [];
+
+      var issueRows = el.issues.map(function (i) {
+        return '<tr>' +
+          '<td><span class="chip ' + i.severity + '">' + i.severity + '</span></td>' +
+          '<td class="mono">' + esc(i.property) +
+            (i.detail ? '<br><span class="muted tiny">' + esc(i.detail) + '</span>' : '') + '</td>' +
+          '<td class="mono">' + esc(i.expected) + '</td>' +
+          '<td class="mono">' + esc(i.actual) + '</td>' +
+          '<td class="mono">' + deltaCell(i.delta, i.tolerance) + '</td></tr>';
       }).join('');
 
-    $('results').innerHTML = head +
-      (sections || '<p class="sub" style="margin-top:14px">Everything matched within tolerance.</p>');
+      var passRows = checks.filter(function (c) { return c.ok; }).map(function (c) {
+        return '<tr>' +
+          '<td><span class="hit ok">ok</span></td>' +
+          '<td class="mono muted">' + esc(c.property) +
+            (c.detail ? '<br><span class="muted tiny">' + esc(c.detail) + '</span>' : '') + '</td>' +
+          '<td class="mono muted">' + esc(c.expected) + '</td>' +
+          '<td class="mono muted">' + esc(c.actual) + '</td>' +
+          '<td class="mono muted">' + deltaCell(c.delta, c.tolerance) + '</td></tr>';
+      }).join('');
+
+      var title = '<h2 style="margin-top:18px">' + esc(e ? e.name : el.figmaId) +
+        ' <span class="muted tiny" style="text-transform:none;letter-spacing:0">' +
+        checks.length + (checks.length === 1 ? ' property' : ' properties') + ' compared' +
+        '</span></h2>';
+
+      if (!issueRows && !passRows) {
+        return title + '<p class="sub">Nothing was compared for this element.</p>';
+      }
+
+      var body = title;
+      if (issueRows) body += tableOf(issueRows);
+      if (passRows) {
+        body += (issueRows
+          ? '<p class="sub" style="margin:10px 0 0">Also verified, within tolerance:</p>'
+          : '') + tableOf(passRows);
+      }
+      return body;
+    }).join('');
+
+    $('results').innerHTML = head + sections;
   }
 
   start();

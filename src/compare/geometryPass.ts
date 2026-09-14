@@ -60,9 +60,9 @@ import type {
   Shadow,
 } from '../types.js';
 import type { Tolerances } from '../config/schema.js';
-import type { Issue } from '../report/types.js';
+import type { Check, Issue } from '../report/types.js';
 import { colorDistance, colorsMatch, formatColor } from './color.js';
-import { compareNumeric, structuralIssue, valueIssue } from './issues.js';
+import { compareNumeric, notePass, noteIssue, structuralIssue, valueIssue } from './issues.js';
 import type { Rgba } from '../types.js';
 
 const SIDES: Array<keyof BoxSides> = ['top', 'right', 'bottom', 'left'];
@@ -86,6 +86,7 @@ export function diffGeometry(
   pair: ElementPair,
   section: SectionContext,
   tolerances: Tolerances,
+  checks?: Check[],
 ): Issue[] {
   if (pair.figma === undefined) {
     return [structuralIssue(pair.figmaId, 'geometry', 'missingInFigma')];
@@ -101,12 +102,12 @@ export function diffGeometry(
 
   // --- Size: already relative, compares directly. ---
   const width = compareNumeric(
-    figmaId, 'geometry', 'width', figmaRect.width, liveRect.width, tolerances.size,
+    figmaId, 'geometry', 'width', figmaRect.width, liveRect.width, tolerances.size, { checks },
   );
   if (width !== undefined) issues.push(width);
 
   const height = compareNumeric(
-    figmaId, 'geometry', 'height', figmaRect.height, liveRect.height, tolerances.size,
+    figmaId, 'geometry', 'height', figmaRect.height, liveRect.height, tolerances.size, { checks },
   );
   if (height !== undefined) issues.push(height);
 
@@ -117,31 +118,34 @@ export function diffGeometry(
 
   const offsetX = compareNumeric(
     figmaId, 'geometry', 'offsetX', expectedOffset.x, actualOffset.x, tolerances.position,
+    { checks },
   );
   if (offsetX !== undefined) issues.push(offsetX);
 
   const offsetY = compareNumeric(
     figmaId, 'geometry', 'offsetY', expectedOffset.y, actualOffset.y, tolerances.position,
+    { checks },
   );
   if (offsetY !== undefined) issues.push(offsetY);
 
   // --- Spec properties. Each is skipped when the design does not set it: an
   // unset design value is not an assertion that the live value must be zero.
   if (figma.padding !== undefined) {
-    issues.push(...diffPadding(figmaId, figma.padding, live.padding, tolerances.padding));
+    issues.push(...diffPadding(figmaId, figma.padding, live.padding, tolerances.padding, checks));
   }
 
   if (figma.cornerRadius !== undefined) {
     issues.push(
       ...diffCornerRadius(
-        figmaId, figma.cornerRadius, live.cornerRadius, tolerances.cornerRadius, liveRect,
+        figmaId, figma.cornerRadius, live.cornerRadius, tolerances.cornerRadius, liveRect, checks,
       ),
     );
   }
 
   if (figma.borders !== undefined) {
     issues.push(
-      ...diffBorders(figmaId, figma.borders, live.borders, tolerances.border, tolerances.color),
+      ...diffBorders(figmaId, figma.borders, live.borders, tolerances.border,
+        tolerances.color, checks),
     );
 
     // CSS borders are always drawn inside the border box. A CENTER or OUTSIDE
@@ -149,30 +153,35 @@ export function diffGeometry(
     // widths still compare but the box they imply does not — say so rather
     // than letting a matching width read as a matching design.
     if (figma.strokeAlign !== undefined && figma.strokeAlign !== 'INSIDE') {
-      issues.push(
-        valueIssue(figmaId, 'geometry', 'border', 'INSIDE (CSS border)', figma.strokeAlign, {
+      const alignIssue = valueIssue(
+        figmaId, 'geometry', 'border', 'INSIDE (CSS border)', figma.strokeAlign, {
           severity: 'info',
           detail: 'strokeAlign',
-        }),
+        },
       );
+      issues.push(alignIssue);
+      noteIssue(checks, alignIssue);
     }
   }
 
   if (figma.backgroundColor !== undefined) {
     const issue = diffColor(
       figmaId, 'backgroundColor', figma.backgroundColor, live.backgroundColor, tolerances.color,
+      undefined, checks,
     );
     if (issue !== undefined) issues.push(issue);
   }
 
   if (figma.color !== undefined) {
-    const issue = diffColor(figmaId, 'color', figma.color, live.color, tolerances.color);
+    const issue = diffColor(figmaId, 'color', figma.color, live.color, tolerances.color,
+      undefined, checks);
     if (issue !== undefined) issues.push(issue);
   }
 
   if (figma.shadows !== undefined) {
     issues.push(
-      ...diffShadows(figmaId, figma.shadows, live.shadows, tolerances.shadow, tolerances.color),
+      ...diffShadows(figmaId, figma.shadows, live.shadows, tolerances.shadow,
+        tolerances.color, checks),
     );
   }
 
@@ -196,11 +205,13 @@ export function diffPadding(
   expected: BoxSides,
   actual: BoxSides,
   tolerance: number,
+  checks?: Check[],
 ): Issue[] {
   const issues: Issue[] = [];
   for (const side of SIDES) {
     const issue = compareNumeric(
-      figmaId, 'geometry', 'padding', expected[side], actual[side], tolerance, { detail: side },
+      figmaId, 'geometry', 'padding', expected[side], actual[side], tolerance,
+      { detail: side, checks },
     );
     if (issue !== undefined) issues.push(issue);
   }
@@ -226,6 +237,7 @@ export function diffCornerRadius(
   actual: CornerRadius,
   tolerance: number,
   liveRect: Rect,
+  checks?: Check[],
 ): Issue[] {
   const issues: Issue[] = [];
   for (const corner of CORNERS) {
@@ -236,7 +248,7 @@ export function diffCornerRadius(
       clampRadius(expected[corner], liveRect),
       actual[corner],
       tolerance,
-      { detail: corner },
+      { detail: corner, checks },
     );
     if (issue !== undefined) issues.push(issue);
   }
@@ -258,6 +270,7 @@ export function diffBorders(
   actual: Borders,
   tolerance: number,
   colorTolerance: number,
+  checks?: Check[],
 ): Issue[] {
   const issues: Issue[] = [];
 
@@ -267,21 +280,26 @@ export function diffBorders(
 
     const width = compareNumeric(
       figmaId, 'geometry', 'border', want.width, got.width, tolerance,
-      { detail: `${side}.width` },
+      { detail: `${side}.width`, checks },
     );
     if (width !== undefined) issues.push(width);
 
-    if (want.width > 0 && got.width > 0 && !colorsMatch(want.color, got.color, colorTolerance)) {
-      issues.push(
-        valueIssue(
+    // Colour is only meaningful where a border is drawn on both sides, so a
+    // side with no border records no colour check rather than a passing one.
+    if (want.width > 0 && got.width > 0) {
+      const distance = colorDistance(want.color, got.color);
+      if (colorsMatch(want.color, got.color, colorTolerance)) {
+        notePass(checks, figmaId, 'geometry', 'border',
+          formatColor(want.color), formatColor(got.color),
+          { delta: distance, tolerance: colorTolerance, detail: `${side}.color` });
+      } else {
+        const issue = valueIssue(
           figmaId, 'geometry', 'border', formatColor(want.color), formatColor(got.color),
-          {
-            delta: colorDistance(want.color, got.color),
-            tolerance: colorTolerance,
-            detail: `${side}.color`,
-          },
-        ),
-      );
+          { delta: distance, tolerance: colorTolerance, detail: `${side}.color` },
+        );
+        issues.push(issue);
+        noteIssue(checks, issue);
+      }
     }
   }
 
@@ -296,13 +314,26 @@ function diffColor(
   actual: Rgba,
   tolerance: number,
   detail?: string,
+  checks?: Check[],
 ): Issue | undefined {
-  if (colorsMatch(expected, actual, tolerance)) return undefined;
-  return valueIssue(figmaId, 'geometry', property, formatColor(expected), formatColor(actual), {
-    delta: colorDistance(expected, actual),
-    tolerance,
-    ...(detail !== undefined ? { detail } : {}),
-  });
+  const distance = colorDistance(expected, actual);
+  if (colorsMatch(expected, actual, tolerance)) {
+    notePass(checks, figmaId, 'geometry', property, formatColor(expected), formatColor(actual), {
+      delta: distance,
+      tolerance,
+      ...(detail !== undefined ? { detail } : {}),
+    });
+    return undefined;
+  }
+  const issue = valueIssue(
+    figmaId, 'geometry', property, formatColor(expected), formatColor(actual), {
+      delta: distance,
+      tolerance,
+      ...(detail !== undefined ? { detail } : {}),
+    },
+  );
+  noteIssue(checks, issue);
+  return issue;
 }
 
 /**
@@ -319,18 +350,19 @@ export function diffShadows(
   actual: Shadow[],
   tolerance: number,
   colorTolerance: number,
+  checks?: Check[],
 ): Issue[] {
   if (expected.length !== actual.length) {
-    return [
-      valueIssue(
-        figmaId,
-        'geometry',
-        'shadow',
-        `${expected.length} shadow${expected.length === 1 ? '' : 's'}`,
-        `${actual.length} shadow${actual.length === 1 ? '' : 's'}`,
-        { detail: 'count' },
-      ),
-    ];
+    const countIssue = valueIssue(
+      figmaId,
+      'geometry',
+      'shadow',
+      `${expected.length} shadow${expected.length === 1 ? '' : 's'}`,
+      `${actual.length} shadow${actual.length === 1 ? '' : 's'}`,
+      { detail: 'count' },
+    );
+    noteIssue(checks, countIssue);
+    return [countIssue];
   }
 
   const issues: Issue[] = [];
@@ -340,16 +372,16 @@ export function diffShadows(
     if (want === undefined || got === undefined) continue;
 
     if (want.inset !== got.inset) {
-      issues.push(
-        valueIssue(
-          figmaId,
-          'geometry',
-          'shadow',
-          want.inset ? 'inset' : 'outset',
-          got.inset ? 'inset' : 'outset',
-          { detail: `${index}.inset` },
-        ),
+      const insetIssue = valueIssue(
+        figmaId,
+        'geometry',
+        'shadow',
+        want.inset ? 'inset' : 'outset',
+        got.inset ? 'inset' : 'outset',
+        { detail: `${index}.inset` },
       );
+      issues.push(insetIssue);
+      noteIssue(checks, insetIssue);
       // An inset/outset flip makes the remaining numbers incomparable.
       continue;
     }
@@ -358,22 +390,23 @@ export function diffShadows(
     for (const metric of metrics) {
       const issue = compareNumeric(
         figmaId, 'geometry', 'shadow', want[metric], got[metric], tolerance,
-        { detail: `${index}.${metric}` },
+        { detail: `${index}.${metric}`, checks },
       );
       if (issue !== undefined) issues.push(issue);
     }
 
-    if (!colorsMatch(want.color, got.color, colorTolerance)) {
-      issues.push(
-        valueIssue(
-          figmaId, 'geometry', 'shadow', formatColor(want.color), formatColor(got.color),
-          {
-            delta: colorDistance(want.color, got.color),
-            tolerance: colorTolerance,
-            detail: `${index}.color`,
-          },
-        ),
+    const shadowDistance = colorDistance(want.color, got.color);
+    if (colorsMatch(want.color, got.color, colorTolerance)) {
+      notePass(checks, figmaId, 'geometry', 'shadow',
+        formatColor(want.color), formatColor(got.color),
+        { delta: shadowDistance, tolerance: colorTolerance, detail: `${index}.color` });
+    } else {
+      const colorIssue = valueIssue(
+        figmaId, 'geometry', 'shadow', formatColor(want.color), formatColor(got.color),
+        { delta: shadowDistance, tolerance: colorTolerance, detail: `${index}.color` },
       );
+      issues.push(colorIssue);
+      noteIssue(checks, colorIssue);
     }
   }
   return issues;

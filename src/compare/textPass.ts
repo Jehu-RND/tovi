@@ -14,9 +14,11 @@
 
 import type { ElementPair, TextSpec } from '../types.js';
 import type { Tolerances } from '../config/schema.js';
-import type { Issue } from '../report/types.js';
+import type { Check, Issue } from '../report/types.js';
 import {
   compareNumeric,
+  notePass,
+  noteIssue,
   normalizeWhitespace,
   structuralIssue,
   valueIssue,
@@ -47,7 +49,11 @@ const TOLERANCE_KEYS = {
  * @returns One Issue per property whose delta exceeded tolerance. An empty
  *          array means the text matches.
  */
-export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
+export function diffText(
+  pair: ElementPair,
+  tolerances: Tolerances,
+  checks?: Check[],
+): Issue[] {
   if (pair.figma === undefined) {
     return [structuralIssue(pair.figmaId, 'text', 'missingInFigma')];
   }
@@ -71,9 +77,13 @@ export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
     const expectedFamily = normalizeFontFamily(expected.fontFamily);
     const actualFamily = normalizeFontFamily(actual.fontFamily);
     if (expectedFamily !== actualFamily) {
-      issues.push(
-        valueIssue(figmaId, 'text', 'fontFamily', expected.fontFamily, actual.fontFamily),
+      const familyIssue = valueIssue(
+        figmaId, 'text', 'fontFamily', expected.fontFamily, actual.fontFamily,
       );
+      issues.push(familyIssue);
+      noteIssue(checks, familyIssue);
+    } else {
+      notePass(checks, figmaId, 'text', 'fontFamily', expected.fontFamily, actual.fontFamily);
     }
   }
 
@@ -90,7 +100,7 @@ export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
       expected[property],
       actual[property],
       tolerances[toleranceKey],
-      { unit },
+      { unit, checks },
     );
     if (issue !== undefined) issues.push(issue);
   }
@@ -101,12 +111,14 @@ export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
   // line height that matched the design.
   for (const key of TEXT_KEYS) {
     if (comparable.has(key)) continue;
-    issues.push(
-      valueIssue(figmaId, 'text', 'skipped', `${key} compared`, `${key} skipped`, {
+    const skipIssue = valueIssue(
+      figmaId, 'text', 'skipped', `${key} compared`, `${key} skipped`, {
         severity: 'info',
         detail: skipReason(key, expected, actual),
-      }),
+      },
     );
+    issues.push(skipIssue);
+    noteIssue(checks, skipIssue);
   }
 
   // Copy drift is advisory, not a failure: it usually explains a wrapping or
@@ -117,9 +129,11 @@ export function diffText(pair: ElementPair, tolerances: Tolerances): Issue[] {
     const a = normalizeWhitespace(expectedCopy);
     const b = normalizeWhitespace(pair.live.textContent);
     if (a !== b) {
-      issues.push(
-        valueIssue(figmaId, 'text', 'textContent', a, b, { severity: 'warning' }),
-      );
+      const copyIssue = valueIssue(figmaId, 'text', 'textContent', a, b, { severity: 'warning' });
+      issues.push(copyIssue);
+      noteIssue(checks, copyIssue);
+    } else {
+      notePass(checks, figmaId, 'text', 'textContent', a, b);
     }
   }
 

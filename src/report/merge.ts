@@ -11,7 +11,9 @@
  */
 
 import type { ToviConfig } from '../config/schema.js';
-import type { ElementReport, Issue, IssueProperty, RunReport, RunSummary, Severity } from './types.js';
+import type {
+  Check, ElementReport, Issue, IssueProperty, RunReport, RunSummary, Severity,
+} from './types.js';
 
 /** Sort weight per severity; lower sorts first. */
 const SEVERITY_ORDER: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -147,9 +149,26 @@ export function buildRunReport(
   config: ToviConfig,
   issues: Issue[],
   timestamp: string,
+  checks: Check[] = [],
 ): RunReport {
   const elements = mergeIssues(config, issues);
   const summary = summarize(elements);
+
+  // Checks stay in comparison order rather than being sorted like issues.
+  // Issues are sorted so the worst reads first; checks are a record of what
+  // the run did, and the order it did it in is the honest presentation.
+  if (checks.length > 0) {
+    const byElement = new Map<string, Check[]>();
+    for (const check of checks) {
+      const list = byElement.get(check.figmaId);
+      if (list === undefined) byElement.set(check.figmaId, [check]);
+      else list.push(check);
+    }
+    for (const element of elements) {
+      const own = byElement.get(element.figmaId);
+      if (own !== undefined) element.checks = own;
+    }
+  }
 
   return {
     timestamp,

@@ -10,7 +10,7 @@
  * as this renderer is concerned.
  */
 
-import type { ElementReport, Issue, RunReport } from './types.js';
+import type { Check, ElementReport, Issue, RunReport } from './types.js';
 
 export interface RenderOptions {
   /** Where the screenshot was written. Shown when it cannot be embedded. */
@@ -108,11 +108,29 @@ export function renderElementSection(element: ElementReport): string {
   if (selector !== undefined) meta.push(`selector <code>${escapeHtml(selector)}</code>`);
   if (!element.paired) meta.push('<span class="muted">unpaired</span>');
 
+  const checks = element.checks ?? [];
+  const passing = checks.filter((check) => check.ok);
+  if (checks.length > 0) {
+    meta.push(`${checks.length} ${checks.length === 1 ? 'property' : 'properties'} compared`);
+  }
+
+  // A passing element still prints what was verified. "No issues" and "nothing
+  // was checked" are indistinguishable otherwise, which invariant 3 forbids.
+  const verified = passing.length === 0 ? '' : `
+      <p class="meta">${element.issues.length > 0 ? 'Also verified' : 'Verified'}, within tolerance:</p>
+      <table>
+        <thead>
+          <tr><th>severity</th><th>pass</th><th>property</th><th>expected</th><th>actual</th><th>delta</th></tr>
+        </thead>
+        <tbody>${passing.map(renderCheckRow).join('')}
+        </tbody>
+      </table>`;
+
   if (element.issues.length === 0) {
     return `
     <section class="element ok">
       <h2><span class="chip chip-pass">pass</span> ${escapeHtml(element.figmaId)}</h2>
-      <p class="meta">${meta.join(' · ')}</p>
+      <p class="meta">${meta.join(' · ')}</p>${verified}
     </section>`;
   }
 
@@ -126,7 +144,7 @@ export function renderElementSection(element: ElementReport): string {
         </thead>
         <tbody>${element.issues.map(renderIssueRow).join('')}
         </tbody>
-      </table>
+      </table>${verified}
     </section>`;
 }
 
@@ -265,12 +283,32 @@ ${captureSection}</div>
 `;
 }
 
+/** One verified property, rendered in the same shape as an issue row. */
+export function renderCheckRow(check: Check): string {
+  const detail = check.detail === undefined ? '' : `<br><span class="muted">${escapeHtml(check.detail)}</span>`;
+  const delta = check.delta === undefined
+    ? '—'
+    : `${check.delta > 0 ? '+' : ''}${check.delta}` +
+      (check.tolerance === undefined ? '' : ` <span class="muted">/ ${check.tolerance}</span>`);
+  return `
+          <tr class="muted">
+            <td><span class="chip chip-pass">ok</span></td>
+            <td>${escapeHtml(check.pass)}</td>
+            <td><code>${escapeHtml(check.property)}</code>${detail}</td>
+            <td><code>${escapeHtml(check.expected)}</code></td>
+            <td><code>${escapeHtml(check.actual)}</code></td>
+            <td>${delta}</td>
+          </tr>`;
+}
+
 /** Render a plain-text summary for terminal output. Kept grep-able. */
 export function renderTextSummary(report: RunReport): string {
   const lines: string[] = [];
   lines.push(`TOVI ${report.status.toUpperCase()}  ${report.url}  (${report.viewport.width}x${report.viewport.height})`);
 
+  let compared = 0;
   for (const element of report.elements) {
+    compared += (element.checks ?? []).length;
     if (element.issues.length === 0) continue;
     for (const issue of element.issues) {
       const detail = issue.detail === undefined ? '' : `.${issue.detail}`;
@@ -285,7 +323,10 @@ export function renderTextSummary(report: RunReport): string {
   const { summary } = report;
   lines.push(
     `  ${summary.elementsPassed}/${summary.elementsChecked} elements passed, ` +
-      `${summary.errorCount} error(s), ${summary.warningCount} warning(s)`,
+      `${summary.errorCount} error(s), ${summary.warningCount} warning(s)` +
+      // Say how much was actually looked at. "0 errors" over 0 comparisons and
+      // "0 errors" over 80 mean opposite things.
+      (compared > 0 ? `, ${compared} propert${compared === 1 ? 'y' : 'ies'} compared` : ''),
   );
   return lines.join('\n');
 }

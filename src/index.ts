@@ -21,7 +21,7 @@ import { diffGeometry } from './compare/geometryPass.js';
 import { structuralIssue, valueIssue } from './compare/issues.js';
 import { buildRunReport } from './report/merge.js';
 import { renderHtmlReport, renderTextSummary } from './report/html.js';
-import type { Issue, RunReport } from './report/types.js';
+import type { Check, Issue, RunReport } from './report/types.js';
 import type { ElementPair, FigmaSpec, LiveStyles, SectionContext } from './types.js';
 
 /**
@@ -126,6 +126,7 @@ export function compareAll(
   liveStyles: Map<string, LiveStyles>,
   ambiguous: Set<string> = new Set(),
   alreadyReported: Set<string> = new Set(),
+  checks?: Check[],
 ): Issue[] {
   const issues: Issue[] = [];
 
@@ -163,7 +164,7 @@ export function compareAll(
     const passes = passesFor(element);
 
     if (passes.text) {
-      issues.push(...diffText(pair, tolerances));
+      issues.push(...diffText(pair, tolerances, checks));
     }
 
     if (passes.geometry) {
@@ -181,15 +182,23 @@ export function compareAll(
           }),
         );
       } else if (containerId !== figmaId) {
-        issues.push(...diffGeometry(pair, section, tolerances));
+        issues.push(...diffGeometry(pair, section, tolerances, checks));
       } else {
         // The container compared against itself is always a zero offset, so
-        // only its size and spec properties are meaningful.
+        // only its size and spec properties are meaningful. The offsets are
+        // dropped from the checks too — listing a self-referential 0 vs 0 as
+        // something that was verified would overstate what the run did.
+        const own: Check[] = [];
+        const isOffset = (property: string): boolean =>
+          property === 'offsetX' || property === 'offsetY';
         issues.push(
-          ...diffGeometry(pair, section, tolerances).filter(
-            (issue) => issue.property !== 'offsetX' && issue.property !== 'offsetY',
+          ...diffGeometry(pair, section, tolerances, own).filter(
+            (issue) => !isOffset(issue.property),
           ),
         );
+        if (checks !== undefined) {
+          for (const check of own) if (!isOffset(check.property)) checks.push(check);
+        }
       }
     }
   }
@@ -301,16 +310,17 @@ export async function executeRun(
   });
 
   // --- Compare ---
+  const checks: Check[] = [];
   const issues = [
     ...normalizeFailures,
     ...compareAll(
       config, figmaSpecs, extraction.styles,
-      new Set(extraction.ambiguous), reportedByNormalize,
+      new Set(extraction.ambiguous), reportedByNormalize, checks,
     ),
   ];
 
   return {
-    report: buildRunReport(config, issues, timestamp),
+    report: buildRunReport(config, issues, timestamp, checks),
     ...(extraction.screenshotPath !== undefined
       ? { screenshotPath: extraction.screenshotPath }
       : {}),

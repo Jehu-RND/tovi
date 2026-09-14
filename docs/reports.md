@@ -26,6 +26,32 @@ Severity is **derived, not judged**:
 | `warning` | Advisory — copy drift, a missing optional property | no |
 | `info` | Context — most notably a `skipped` comparison | no |
 
+## What a passing run shows
+
+A green run lists what it verified, not just that it passed. Each element
+carries a `checks` array — every property that was compared, in comparison
+order, with both values, the delta and the tolerance it was tested against:
+
+```json
+{ "property": "width", "ok": true, "expected": "390px", "actual": "390px",
+  "delta": 0, "tolerance": 1 }
+```
+
+The terminal summary carries the count:
+
+```
+6/6 elements passed, 0 error(s), 0 warning(s), 27 properties compared
+```
+
+This exists because of invariant 3. `0 errors` over eighty comparisons and
+`0 errors` over none are the same sentence and opposite facts, and without the
+count there was no way to tell them apart.
+
+A failing check always has a matching Issue. The reverse does not hold:
+`missingInLive`, `skipped` and other structural issues describe a comparison
+that could not happen, so they contribute no check — which is exactly why a run
+full of them reports few properties compared.
+
 ## The `Issue`
 
 The atomic unit of output: one property, on one element, whose delta exceeded
