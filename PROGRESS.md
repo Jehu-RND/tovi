@@ -3,6 +3,9 @@
 **Status: ~65% to MVP.**
 _Last updated: 2026-09-11_
 
+> Task-level breakdown lives in [TASKS.md](TASKS.md) — 46 tasks across todo,
+> in progress, and done. This file carries the reasoning; that one carries the list.
+
 The engine is close to finished. The remaining third is the part that always
 costs more than it looks: running against a real WordPress page instead of a
 controlled fixture, and making the config bearable to author.

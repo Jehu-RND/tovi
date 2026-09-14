@@ -1,0 +1,46 @@
+---
+description: TOVI architecture, invariants, and conventions
+alwaysApply: true
+---
+
+Read `AGENTS.md` at the repository root — it is the single source of truth for
+architecture, invariants, and conventions. This rule is a summary.
+
+## What this is
+
+TOVI compares a Figma design against a live page and reports drift. A run is a
+pure function of `(FigmaSpec, LiveStyles, Tolerances) -> Issue[]`. **No AI, no
+heuristics, no fuzzy matching in the comparison path.** Determinism is the
+product — it is what makes the tool usable in CI.
+
+## Invariants
+
+1. Never compare Figma canvas coordinates to browser viewport coordinates.
+   Positions are normalized against a section container on each side
+   independently; only relative offsets compare. Guarded by a test.
+2. Measure every element in a single `page.evaluate()`, and never scroll —
+   a correctness requirement, not an optimization.
+3. An absent check must never look like a passing check. Emit an `info`-severity
+   `skipped` issue instead of returning nothing.
+4. Output must be byte-identical between runs. New `IssueProperty` values go in
+   `PROPERTY_ORDER` in `src/report/merge.ts`.
+5. The Figma token comes from `FIGMA_TOKEN` only — never config, logs, or reports.
+6. Colors compare as CIEDE2000 deltaE via culori, with alpha checked separately.
+7. Escape every value interpolated into a report; layer names and page text are
+   untrusted.
+
+## Conventions
+
+- ES modules, `NodeNext` — relative imports carry a `.js` extension in TS source.
+- Strict TS with `exactOptionalPropertyTypes`: spread optional fields
+  conditionally (`...(x !== undefined ? { x } : {})`), never assign `undefined`.
+- Build issues through `src/compare/issues.ts` helpers, never inline.
+- Boundary modules own their source's quirks. An `if (isFigma)` inside a
+  comparison pass means the fix belongs in a normalizer.
+- Comments explain *why*, not *what*.
+
+## Gate
+
+`npm run typecheck && npm test` must both pass. `npm test` passes without
+Chromium because the integration suite skips itself — install it before trusting
+a green run that touched `src/live/extract.ts`.

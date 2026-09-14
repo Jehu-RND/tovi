@@ -77,6 +77,24 @@ offsetY = element.y - section.y
 Those relative offsets are what gets compared. Sizes need no such treatment.
 See the full note at the top of [geometryPass.ts](src/compare/geometryPass.ts).
 
+## Documentation
+
+Full docs live in [docs/](docs/):
+
+| Guide | |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Install, configure, first report |
+| [Tagging elements](docs/tagging.md) | Adding `data-figma-id` to a theme |
+| [Configuration](docs/configuration.md) | Full `tovi.config.json` reference |
+| [Comparison passes](docs/comparison.md) | What is compared, and how |
+| [Reports and exit codes](docs/reports.md) | Reading and consuming the output |
+| [Architecture](docs/architecture.md) | Pipeline, contracts, invariants |
+| [CI integration](docs/ci.md) | Running TOVI on deploy |
+| [Troubleshooting](docs/troubleshooting.md) | When a finding looks wrong |
+
+Current work is tracked in [TASKS.md](TASKS.md). Contributing — human or AI —
+starts at [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Setup
 
 ```bash
@@ -163,7 +181,21 @@ src/
   live/               Playwright extraction
   compare/            the two passes + color and Issue helpers
   report/             issue grouping + HTML rendering
-tests/                one placeholder suite per pass
+tests/                one suite per module boundary
+```
+
+## Repository
+
+```
+TASKS.md              task board — todo / in progress / done
+AGENTS.md             instructions for AI coding agents (and humans)
+CLAUDE.md             Claude Code pointer -> AGENTS.md
+CONTRIBUTING.md       setup, gate, conventions
+docs/                 full documentation
+.claude/
+  settings.json       permissions
+  commands/           /verify /add-element /add-property /triage /sync-docs /first-run
+  agents/             determinism-auditor, figma-mapper
 ```
 
 ## Stack
