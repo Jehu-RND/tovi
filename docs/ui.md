@@ -56,6 +56,27 @@ deploy, and until it lands there is nothing to compare — so the first run woul
 otherwise have to wait on a code change. Pointing at classes the markup already
 has gets you a real comparison immediately.
 
+### Test selectors before running
+
+**Test selectors** loads the page once and reports, per row, whether the
+selector found exactly one element and what that element actually is:
+
+```
+.level-of-play            1 match    div.grid-container.level-of-play · 1440×151
+.superior-customization   1 match    div.superior-customization · 1440×668
+.mega-menu-item           25 matches li#mega-menu-item-92… · 62×70
+[data-figma-id="hero"]    no match
+```
+
+It costs one page load and no Figma call, so it is a fast loop — unlike a full
+check, which launches a browser *and* fetches every node before it can tell you
+the same thing.
+
+It also reads the page's own structure and offers the sections it finds as
+completions on each selector field, so a container can be picked rather than
+guessed at. Only classes and ids that are unique on the page are proposed; an
+ambiguous one would be a config error waiting to happen.
+
 The trade is stability: a class can be renamed in a redesign without anyone
 thinking about TOVI, and then the check reports `missingInLive` for a reason
 that is not a design defect. Use selectors to get started and to find out
@@ -106,6 +127,7 @@ Useful if you want to script against it.
 | `GET` | `/api/health` | `hasToken`, file key from env, config path, default tolerances |
 | `GET` | `/api/config` | The loaded config, or `null` with the reason |
 | `GET` | `/api/layers?file=&page=&search=&depth=` | `fileName`, `pages`, `rows` |
+| `POST` | `/api/probe` | `{ matches, candidates }` for a posted `{ url, viewport, selectors }` |
 | `POST` | `/api/check` | `{ report, summary }` for a posted `{ config }` |
 
 Every failure comes back as `{ error }` with the same message the CLI would have

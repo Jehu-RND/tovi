@@ -33,6 +33,7 @@ import type { ToviConfig } from '../config/schema.js';
 import { DEFAULT_TOLERANCES } from '../config/schema.js';
 import { createFigmaClient } from '../figma/client.js';
 import { flattenLayers, pageNames } from '../figma/layers.js';
+import { probeSelectors } from '../live/probe.js';
 import { renderTextSummary } from '../report/html.js';
 import { UI_HTML } from './page.js';
 
@@ -62,6 +63,10 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 
   if (size === 0) return undefined;
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -169,6 +174,37 @@ async function handleCheck(body: unknown): Promise<Record<string, unknown>> {
   return { report, summary: renderTextSummary(report) };
 }
 
+/**
+ * Test selectors against the live page without running a check.
+ *
+ * Authoring a config is otherwise a guessing loop: type a selector, run a full
+ * check, read missingInLive, guess again. This answers from the page alone, so
+ * it costs one page load and no Figma call.
+ */
+async function handleProbe(body: unknown): Promise<Record<string, unknown>> {
+  if (typeof body !== 'object' || body === null) {
+    throw new Error('Expected a JSON body with a url and selectors');
+  }
+  const input = body as { url?: unknown; selectors?: unknown; viewport?: unknown };
+
+  if (typeof input.url !== 'string' || input.url.trim() === '') {
+    throw new Error('A url is required to test selectors against.');
+  }
+  const selectors = Array.isArray(input.selectors)
+    ? input.selectors.filter((s): s is string => typeof s === 'string' && s.trim() !== '')
+    : [];
+
+  const viewport = isRecord(input.viewport) ? input.viewport : {};
+  const width = typeof viewport['width'] === 'number' ? viewport['width'] : 1440;
+  const height = typeof viewport['height'] === 'number' ? viewport['height'] : 900;
+
+  return probeSelectors({
+    url: input.url,
+    viewport: { width, height },
+    selectors,
+  }) as unknown as Record<string, unknown>;
+}
+
 /* ------------------------------------------------------------------ *
  * Server
  * ------------------------------------------------------------------ */
@@ -212,6 +248,11 @@ async function handle(
 
     if (req.method === 'GET' && path === '/api/layers') {
       sendJson(res, 200, await handleLayers(url));
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/probe') {
+      sendJson(res, 200, await handleProbe(await readJsonBody(req)));
       return;
     }
 

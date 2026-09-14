@@ -141,6 +141,10 @@ export const UI_HTML = `<!doctype html>
   .pick.disabled { cursor: not-allowed; opacity: .45; }
   .pick.disabled:hover { background: transparent; }
   .pick.added { opacity: .5; }
+  .hit { font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .hit.ok { color: var(--ok); }
+  .hit.bad { color: var(--error); }
+  .hit.warn { color: var(--warn); }
   .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
   .stat { font-size: 12px; color: var(--ink-2); }
   .stat b { display: block; font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -218,11 +222,14 @@ export const UI_HTML = `<!doctype html>
     <h2>3 &middot; What gets checked</h2>
     <div id="elements"></div>
 
+    <datalist id="selhints"></datalist>
+
     <div class="row" style="margin-top:14px">
       <div class="field">
         <label for="section">Measure positions relative to</label>
         <select id="section"></select>
       </div>
+      <button id="test" class="ghost" type="button" disabled>Test selectors</button>
       <button id="run" type="button" disabled>Run check</button>
     </div>
     <p class="sub" style="margin-top:8px">
@@ -250,7 +257,7 @@ export const UI_HTML = `<!doctype html>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
 
-  var state = { elements: [], section: '', fileKey: '', pages: [] };
+  var state = { elements: [], section: '', fileKey: '', pages: [], probe: {} };
   var ROW_LIMIT = 250;
 
   function esc(s) {
@@ -323,10 +330,23 @@ export const UI_HTML = `<!doctype html>
         'click the ones you want checked.</p>';
     } else {
       var rows = state.elements.map(function (e, i) {
+        var probe = state.probe[e.selector];
+        var status = '<span class="muted tiny">—</span>';
+        if (probe) {
+          if (probe.invalid) status = '<span class="hit bad">not valid CSS</span>';
+          else if (probe.count === 1) status = '<span class="hit ok">1 match</span>';
+          else if (probe.count === 0) status = '<span class="hit bad">no match</span>';
+          else status = '<span class="hit warn">' + probe.count + ' matches</span>';
+        }
+
         return '<tr>' +
           '<td>' + esc(e.name || e.figmaId) + '</td>' +
           '<td><input class="mono" data-edit="selector" data-i="' + i + '" ' +
-            'value="' + esc(e.selector) + '" spellcheck="false"></td>' +
+            'value="' + esc(e.selector) + '" spellcheck="false" list="selhints">' +
+            (probe && probe.describes
+              ? '<div class="muted tiny" style="margin-top:3px">' + esc(probe.describes) + '</div>'
+              : '') + '</td>' +
+          '<td>' + status + '</td>' +
           '<td><select data-edit="passes" data-i="' + i + '">' +
             '<option value=""' + (e.passes === '' ? ' selected' : '') + '>size, position, type</option>' +
             '<option value="geometry"' + (e.passes === 'geometry' ? ' selected' : '') + '>size and position</option>' +
@@ -338,8 +358,8 @@ export const UI_HTML = `<!doctype html>
 
       box.innerHTML =
         '<div class="scroll"><table><thead><tr>' +
-        '<th style="width:28%">Figma layer</th><th>How to find it on the page</th>' +
-        '<th style="width:20%">Compare</th><th></th>' +
+        '<th style="width:24%">Figma layer</th><th>How to find it on the page</th>' +
+        '<th style="width:11%">Found?</th><th style="width:18%">Compare</th><th></th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
         '<p class="sub" style="margin-top:10px">Any CSS selector works &mdash; ' +
         '<code>.hero__title</code>, <code>main .lop-column</code>. The default looks for a ' +
@@ -350,6 +370,7 @@ export const UI_HTML = `<!doctype html>
     renderSectionChoices();
     syncJson();
     $('run').disabled = state.elements.length === 0;
+    $('test').disabled = state.elements.length === 0;
   }
 
   /** Rule 3: the section is picked from what exists, never typed. */
@@ -372,7 +393,11 @@ export const UI_HTML = `<!doctype html>
     var field = event.target.getAttribute('data-edit');
     if (!field) return;
     var element = state.elements[Number(event.target.getAttribute('data-i'))];
-    if (element) { element[field] = event.target.value; syncJson(); }
+    if (!element) return;
+    element[field] = event.target.value;
+    syncJson();
+    // A stale "1 match" next to an edited selector would be a lie.
+    if (field === 'selector' && !state.probe[element.selector]) renderElements();
   });
 
   $('elements').addEventListener('click', function (event) {
@@ -555,6 +580,50 @@ export const UI_HTML = `<!doctype html>
     }
     addElement(tr.dataset.node, tr.dataset.name);
     tr.classList.add('added');
+  });
+
+  /* ---------- selector probe ---------- */
+
+  /**
+   * Ask the page which selectors match, without running a check.
+   *
+   * A full run costs a browser launch and every Figma node; this costs one
+   * page load and answers the only question that matters while authoring.
+   */
+  $('test').addEventListener('click', async function () {
+    var button = $('test');
+    var url = $('url').value.trim();
+    if (!url) { note($('env'), 'Enter the live URL first.', 'bad'); return; }
+
+    button.disabled = true;
+    button.textContent = 'Testing…';
+    try {
+      var data = await api('/api/probe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          url: url,
+          viewport: { width: Number($('vw').value), height: Number($('vh').value) },
+          selectors: state.elements.map(function (e) { return e.selector; })
+        })
+      });
+
+      state.probe = {};
+      data.matches.forEach(function (m) { state.probe[m.selector] = m; });
+
+      // Offer the page's own sections as completions, so a selector can be
+      // chosen rather than guessed.
+      $('selhints').innerHTML = (data.candidates || []).map(function (c) {
+        return '<option value="' + esc(c.selector) + '">' + esc(c.describes) + '</option>';
+      }).join('');
+
+      renderElements();
+    } catch (err) {
+      note($('env'), esc(err.message), 'bad');
+    } finally {
+      button.disabled = state.elements.length === 0;
+      button.textContent = 'Test selectors';
+    }
   });
 
   /* ---------- run ---------- */
