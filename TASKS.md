@@ -6,9 +6,9 @@ _Last updated: 2026-09-14_
 
 | Status | Count |
 | --- | --- |
-| Done | 30 |
-| In Progress | 2 |
-| Todo | 20 |
+| Done | 34 |
+| In Progress | 1 |
+| Todo | 21 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
 [PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
@@ -18,17 +18,18 @@ of where things actually stand. This file is the task list.
 
 ## In Progress
 
-Both items are **blocked on external input**, not mid-implementation. Nothing in
-the codebase is currently half-written — the engine is at a clean stopping point.
+One item, **blocked on external input**, not mid-implementation. Nothing in the
+codebase is currently half-written — the engine is at a clean stopping point.
 
 | ID | Task | Blocked on |
 | --- | --- | --- |
-| P-01 | **Tag the WordPress theme.** Add `data-figma-id` to the hero elements in the theme templates. Slugs are chosen freely — they do not need to match Figma layer names. | You. Requires theme template access |
-| P-02 | **First real run.** Point TOVI at the live URL, triage what comes back, separate real defects from environmental artifacts. | The live URL, and P-01 |
+| P-01 | **Tag the WordPress theme.** Add `data-figma-id` to the hero elements in the theme templates. Slugs are chosen freely — they do not need to match Figma layer names. | You. Requires theme template access. Note this is now *optional*: selector pairing works and needs no deploy (see T-31) |
 
-P-02 is the single biggest risk in the project. Everything the tool does has been
-verified against a controlled fixture; none of it has been verified against a
-real WordPress page.
+P-02 is **done** — see [docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md).
+The engine survived contact with a real page: the hero passed clean and all 35
+findings sort cleanly: 19 genuine defects and four explainable classes of
+noise, none of them a miscomparison. The
+project's biggest risk is retired.
 
 ---
 
@@ -41,12 +42,26 @@ debug, catalogued in [docs/troubleshooting.md](docs/troubleshooting.md).
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| T-01 | Confirm the Figma frame width matches `viewport.width` | Frame is 1728px. A mismatch drifts every width comparison |
-| T-02 | Decide the `fontWeight` tolerance for Gotham | Figma reports `350`; if the theme declares 300/400, the default tolerance of `0` flags every heading. Real finding or artifact — unknowable until P-02 |
+| ~~T-01~~ | ~~Confirm the Figma frame width matches `viewport.width`~~ | **Done in triage 001.** Ran at 1728; the hero matched 1728×972 exactly and no width drift was attributable to the viewport |
+| ~~T-02~~ | ~~Decide the `fontWeight` tolerance for Gotham~~ | **Answered in triage 001: do not change the tolerance.** The `350` is a variable-font axis value; the same node reports `fontStyle: "Medium"`, which is 500 in CSS, and the build is correct. Loosening the tolerance would hide the genuine Bold-700-vs-600 finding on another node. Superseded by T-28 |
 | T-03 | Handle cookie banner / promo bar offset | Absorbed by normalization only when the banner sits *outside* the section |
 | T-04 | Handle lazy-loaded images measuring `0×0` | The extractor never scrolls, by design. Needs explicit sizing or `loading="eager"` |
 | T-05 | Confirm sticky-header behaviour at scroll 0 | Measured expanded; verify that is what the design shows |
-| T-06 | Triage false positives and tune tolerances | The output of P-02. A check that cries wolf gets ignored |
+| ~~T-06~~ | ~~Triage false positives and tune tolerances~~ | **Done in triage 001.** Verdict: no tolerance needs tuning. The noise is four specific causes, addressed by T-27–T-30, not by widening thresholds |
+
+### From triage 001 — the noise has four causes
+
+Each of these removes a class of false positive **without weakening a check**.
+Ordered by how much noise they remove. Full reasoning in
+[docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md).
+
+| ID | Task | Notes |
+| --- | --- | --- |
+| T-27 | **Warn when a text node's box is not a layout box** | Part of the largest noise class (8 of 35 findings). A Figma TEXT node with `textAutoResize: WIDTH_AND_HEIGHT` hugs its glyphs, so comparing its width/offsetX to a block-level element is meaningless. `textAutoResize` is already in the API response. Warn at config-load or probe time — an authoring guard, not a comparison change |
+| T-28 | **Prefer `fontStyle` over the raw numeric `fontWeight`** | Map the CSS weight-name table (Thin 100 … Black 900) and fall back to the number. Fixed lookup, not fuzzy matching — stays inside invariant 7. Fixes the `350` false positive while preserving the real Bold-vs-600 finding |
+| T-29 | **Do not compare box borders on a TEXT node** | A stroke on a text layer is a glyph outline (`-webkit-text-stroke`), not a `border`; the check can only ever fail. Downgrade to `info` **with a reason** — invariant 3 means it must not become silence |
+| T-30 | **Declared font-family aliases in the config** | Figma says `Gotham`, the theme says `"Hco Gotham"` — same typeface, foundry-prefixed name. Fires on every text element on every run. Needs an explicit user-declared alias map, never a fuzzy match |
+| T-31 | **Document the pairing traps in `docs/tagging.md`** | The 526px gap and the `backgroundColor` finding were both one bad pairing: `.wrap` excludes the header and footer that the frame draws. Also worth naming: this design file has pasted screenshots of the live site as layers, which must never be paired |
 
 ### Config authoring ergonomics
 

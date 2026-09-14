@@ -20,6 +20,7 @@ which is what makes it usable in CI.
 | [Architecture](architecture.md) | Changing the code |
 | [CI integration](ci.md) | Running TOVI on deploy |
 | [Troubleshooting](troubleshooting.md) | A finding looks wrong, or a run behaves oddly |
+| [Triage 001 — Men's Basketball](triage-001-mens-basketball.md) | What the first real run actually produced, and which findings were worth believing |
 
 Working on the codebase with an AI assistant? Start at [AGENTS.md](../AGENTS.md).
 
@@ -42,7 +43,12 @@ decision the whole tool rests on.
 
 ## Project status
 
-The engine is feature-complete and covered by 100 passing tests, including an
-integration suite that drives real Chromium. It has **not yet been run against a
-real production page** — see [PROGRESS.md](../PROGRESS.md) for the honest state
-of things, known gaps, and what is blocked on whom.
+The engine is feature-complete and covered by 162 passing tests, including two
+integration suites that drive real Chromium. It **has** been run against a real
+production page and the output triaged finding by finding — see
+[triage 001](triage-001-mens-basketball.md) for the verdict, and
+[PROGRESS.md](../PROGRESS.md) for the honest state of things and known gaps.
+
+The short version: the comparison is trustworthy, and the weakest part of the
+tool is now config authoring — two of the four sources of noise in that run were
+pairing mistakes the tool accepted in silence.

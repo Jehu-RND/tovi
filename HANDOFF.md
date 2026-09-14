@@ -1,6 +1,6 @@
 # Handoff
 
-_Written 2026-09-14. Branch `feat/ui-borders-layers`, 6 commits ahead of `main`._
+_Written 2026-09-14. Updated the same day, after the first triage. On `main`._
 
 Read this first if you are picking TOVI up. It covers where the project actually
 stands, what changed recently and why, and what to do next. It does not repeat
@@ -12,12 +12,14 @@ full task list), or [docs/](docs/) (the reference).
 ## Where this stands in one paragraph
 
 TOVI compares a Figma design against a live page and reports where the build
-drifted. The engine is finished and covered by 162 tests. As of this session it
-has been **run end to end against the real target** — `prolook.com` and the real
-Figma file — and produces real findings. The one thing still missing is the
-thing that has been missing since the start: **nobody has yet triaged a run to
-decide whether the findings are trustworthy.** That is the whole remaining
-question, and it needs a person, not more code.
+drifted. The engine is finished, covered by 162 tests, has been **run end to
+end against the real target**, and — as of
+[docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md) — has
+been **triaged finding by finding**. The verdict: the findings are trustworthy.
+The section container passed clean; of 35 findings **19 are genuine** and the
+other 16 fall into four classes of noise, none of them a miscomparison. What is
+left is not a question any more, it is work: four scoped tasks that remove those
+four classes, none of which requires weakening a check.
 
 ---
 
@@ -47,36 +49,51 @@ This distinction matters more than the test count.
 | Comparison engine, both passes | 162 unit tests |
 | Browser extraction | Real Chromium, `tests/fixtures/page.html` |
 | Figma normalization | The real API, real nodes |
-| Full pipeline | **The real site and real design file** — this session |
-| Whether the findings are *trustworthy* | **Nothing. This is the open question.** |
+| Full pipeline | **The real site and real design file** |
+| Whether the findings are *trustworthy* | **A finding-by-finding triage.** Every delta re-derived from independently measured values; all held |
 
 ---
 
 ## The last real run
 
-Figma frame `11350:4869` (1728×6537) against `.wrap` on
-`prolook.com/sports/mens-basketball/`, at a 1728 viewport:
+Five elements against frame `11350:4869`, hero as the section container, at a
+1728 viewport. `1/5 elements passed, 35 error(s)`.
 
-```
-FAIL
-  error  height           design 6537px  live 6011px        delta -526
-  error  backgroundColor  design #fff    live transparent
-```
+Do not read that as bad. The element that passed is the **section container** —
+a real Figma FRAME and a real live `div`, both 1728×972, clean on size,
+position, fill, border and radius. That is the whole pipeline working on
+production data.
 
-Read that carefully, because it is the first genuinely informative output the
-tool has produced:
+The 35 findings sort into exactly four causes, and the split is the useful part:
 
-- **Width passed.** 1728 design against 1728 live, no issue raised. That is the
-  coordinate and measurement pipeline working correctly on real data.
-- **The height gap is a real question.** 526px is well past noise. Nobody has
-  looked into whether it is a build defect, a design that moved on, or a
-  container that is not the right pairing.
-- **The background finding is probably noise.** `.wrap` has no background of its
-  own; the white comes from `body`. This is the shape of false positive to
-  expect — the selector points at *a* real element, just not the one whose
-  properties the design describes.
+| Cause | Findings | Verdict |
+| --- | --- | --- |
+| Box-shape mismatch (`width`, `offsetX`) | 8 | Authoring trap. A `textAutoResize: WIDTH_AND_HEIGHT` node hugs its glyphs; the rest are a 1604 design column against full-bleed 1728 elements. Arithmetic confirms both: `(1470−742)/2 = 364` and `(1728−1604)/2 = 62`, exactly the reported `offsetX` deltas |
+| Figma's `fontWeight: 350` | 1 | False positive. It is a variable-font axis value; the node's `fontStyle: "Medium"` is 500 in CSS and the build is right |
+| A stroke on a TEXT node compared as a CSS border | 4 | Tool gap. A glyph outline has no `border` equivalent, so the check can only fail |
+| Font family under a foundry-prefixed name | 3 | Tool gap. `Gotham` vs `"Hco Gotham"` — same typeface, fires on every text element |
+| **Real build defects** | **19** | Genuine. See below |
 
----
+**The real defect worth acting on first:** all three headings are missing their
+negative tracking — design `−0.48 / −0.32 / −0.4`px, live `0` for every one.
+The design applies −1% letter-spacing to headings and the build applies none.
+Consistent, unambiguous, cheap to fix.
+
+Also real: two of three headings are built 8px small, and two are weight 600
+where the design is Bold/700. The remaining 8 real findings are `height` and
+`offsetY` deltas, which are mostly *consequences* of the type being smaller —
+fix the type and re-run before treating them as separate defects.
+
+### The 526px height gap — answered
+
+The previous run's headline finding was `height design 6537 live 6011`. It was
+**mostly a pairing artifact**. `.wrap` is not the page: `#main-header` (72px)
+sits above it and `footer.content-info` (325px) below, and the Figma frame
+draws both. Against `document.scrollHeight` (6433) the gap is **104px**, not
+526 — distributed, with no section missing.
+
+The same bad pairing produced the `backgroundColor` finding. One mistake, two
+scary-looking findings.
 
 ## Two things that will bite you
 
@@ -109,11 +126,24 @@ above worked. The theme is unusually selector-friendly:
 Use **Test selectors** in the UI rather than guessing; it costs one page load
 and no Figma call.
 
+Two corrections to that table from triage 001, measured at a 1728 viewport:
+`.built-better-footer` is **125×22**, a small text element and not a section —
+do not treat it as one. `.level-of-play` is a max-width container, so it
+measures 1440×151 at a 1440 viewport and 1500×151 at 1728.
+
 ---
 
-## What changed this session
+## What changed recently
 
-Six commits, 49 files, +3493/−103.
+**The triage session (latest).** No source changed — the deliverable is
+[docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md), plus
+the board and docs catching up to it: P-02 closed, T-01/T-02/T-06 answered and
+struck, T-27–T-31 added, and `PROGRESS.md` moved from ~65% to ~80%. The stale
+"borders are not compared at all" line in
+[`/triage`](.claude/commands/triage.md) was corrected and the three gaps the
+triage found were added to it.
+
+**The session before it.** Six commits, 49 files, +3493/−103.
 
 | Commit | What |
 | --- | --- |
@@ -157,50 +187,68 @@ adding a control that takes a raw config value as free text is a regression.
 
 ## What to do next
 
-**Triage one section.** Not more features. Pick `.level-of-play` or
-`.superior-customization`, pair it with the matching Figma frame, run it, and go
-through every finding deciding: real build defect, environmental artifact, or
-tool gap. [`/triage`](.claude/commands/triage.md) encodes that checklist and
-[docs/troubleshooting.md](docs/troubleshooting.md) catalogues what to expect.
+The triage is done, so the board is worth working on now. In order:
 
-Three findings are near-certain and all are documented:
+**1. Remove the four noise classes — T-27 to T-30.** Each has a written verdict
+in the triage doc and none requires weakening a check.
 
-- **The 1728 / 1440 question.** The Figma frame is 1728 wide. Run at 1728 and
-  the widths line up; run at 1440 and a responsive layout legitimately differs.
-  Decide which width you are actually validating.
-- **Gotham reports `fontWeight: 350` in Figma.** If the theme declares 300 or
-  400, the default tolerance of `0` flags every heading. Real finding or Figma
-  artifact — unknowable until someone looks.
-- **Lazy-loaded images measure `0×0`.** The extractor never scrolls, by design;
-  scrolling would corrupt the shared coordinate origin Pass A depends on.
+- **T-27** — warn when a text node's box is not a layout box. Biggest single
+  win: part of the 8-finding box-shape class. `textAutoResize` is already in
+  the API response, so
+  this is an authoring guard, not a comparison change.
+- **T-28** — prefer `fontStyle` over the raw numeric `fontWeight`. A fixed
+  CSS weight-name table (Thin 100 … Black 900), not fuzzy matching, so it stays
+  inside invariant 7. **Do not fix this by raising the tolerance** — that would
+  hide the genuine Bold-700-vs-600 finding on another node.
+- **T-29** — stop comparing box borders on a TEXT node. Downgrade to `info`
+  **with a reason**; invariant 3 means it must not become silence.
+- **T-30** — declared font-family aliases. `Gotham` vs `"Hco Gotham"` is the
+  same typeface under a foundry-prefixed name, and it fires on every text
+  element on every run. Must be an explicit user-declared map, never a fuzzy
+  match.
 
-Only after that triage is the rest of the board worth working on. Everything
-else is polish on a tool nobody has yet decided to trust.
+**2. Write down the pairing traps — T-31.** Two of the four noise classes are
+mistakes the tool lets an author make in silence.
 
-### If you want to build instead
+**3. Take the letter-spacing defect to whoever owns the theme.** It is the first
+genuine defect TOVI has found. Worth confirming the tool's output survives
+contact with the person who has to act on it.
 
-In rough order of value, from [TASKS.md](TASKS.md):
+### Then the rest of the board
 
 - **T-25** — click a live element to pair it with a layer. The probe already
-  proposes candidates; this closes the loop.
+  proposes candidates; this closes the loop. Worth more after the triage than
+  before, since authoring is now the weak spot.
 - **T-09 follow-on** — the 8293-layer file makes layer discovery the bottleneck.
 - **T-21/T-22/T-23** — the AI suggestion layer. Advisory only, never the
   verdict; see invariant 7 in [AGENTS.md](AGENTS.md).
 
----
-
 ## Open questions for whoever owns this
 
-1. **Is the 526px height gap real?** Nobody has looked.
-2. **Which viewport is the source of truth** — 1728 to match the frame, or 1440
-   because that is what most visitors see?
-3. **Selectors or attributes?** Selectors work now and need no deploy, but a
-   class renamed in a redesign breaks a check for a reason that is not a design
-   defect. `data-figma-id` is durable but needs theme access (P-01).
-4. **Does this branch merge to `main`?** It is 6 commits, all green, nothing
-   pushed.
+The first and fourth are answered. Two remain, and neither blocks the work.
 
----
+1. ~~Is the 526px height gap real?~~ **Answered: mostly a pairing artifact.**
+   ~397px of it was `.wrap` excluding the header and footer the frame draws.
+   The genuine figure is ~104px, distributed.
+2. **Which viewport is the source of truth** — 1728 to match the frame, or 1440
+   because that is what most visitors see? Triage 001 used 1728 and the widths
+   behaved, but that is a demonstration, not a decision.
+3. **Are the −8px heading sizes intentional?** They are real. "Real" and "wrong"
+   are not the same thing — a build may legitimately have overridden the design.
+4. ~~Does this branch merge to `main`?~~ **Merged.** All of it is on `main`.
+
+### One more thing worth knowing about the design file
+
+Frame `11350:4869` has 64 children and **almost no section containers** — loose
+rectangles, text and instances positioned absolutely. There is no Figma node
+corresponding to `.level-of-play`, `.superior-customization` or
+`.built-for-every-player`. Pairing on this page has to be text-to-text and
+instance-to-wrapper.
+
+Two of the frame's children are also **pasted screenshots of the existing site**
+(`Screenshot 2026-01-22…` 1728×105 at the top, `Screenshot 2026-01-08…`
+1738×354 in the footer group). That is designer scaffolding, not specification.
+Never pair against them.
 
 ## Things not to break
 
