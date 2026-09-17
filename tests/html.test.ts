@@ -225,3 +225,37 @@ describe('the report names the element that was matched', () => {
     expect(html).not.toContain('matched');
   });
 });
+
+/**
+ * Run notes — the page preparation that every number below was measured on.
+ */
+describe('run notes', () => {
+  const notes = [
+    { kind: 'overlay' as const, message: 'overlay ".promo" hid 1 element before measuring' },
+    { kind: 'lazyImages' as const, message: '11 lazy-loaded images switched to eager' },
+  ];
+
+  it('renders them above the first element, not after the findings', () => {
+    const html = renderHtmlReport(report({ notes }));
+    expect(html.indexOf('Before measuring')).toBeLessThan(html.indexOf('class="element'));
+  });
+
+  it('renders nothing at all when the run prepared nothing', () => {
+    expect(renderHtmlReport(report())).not.toContain('Before measuring');
+  });
+
+  it('escapes a note, since a selector comes from the config', () => {
+    const html = renderHtmlReport(report({
+      notes: [{ kind: 'overlay', message: 'overlay "<img src=x onerror=1>" matched nothing' }],
+    }));
+    expect(html).toContain('&lt;img src=x onerror=1&gt;');
+    expect(html).not.toContain('<img src=x');
+  });
+
+  it('puts them above the findings in the terminal summary too', () => {
+    const text = renderTextSummary(report({ notes }));
+    const lines = text.split('\n');
+    expect(lines[1]).toContain('overlay ".promo" hid 1 element');
+    expect(lines[2]).toContain('lazy-loaded images');
+  });
+});

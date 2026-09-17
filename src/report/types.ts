@@ -45,6 +45,14 @@ export type IssueProperty =
   | 'missingInLive'
   | 'ambiguousInLive'
   | 'skipped'
+  // Measurement advisories. None of these ever fails a run: each states a fact
+  // about how one side was authored or measured that changes what a delta on
+  // the SAME element means. They exist because the alternative — leaving the
+  // reader to rediscover it — is what produced sixteen of triage 001's
+  // thirty-five findings.
+  | 'boxShape'
+  | 'zeroSize'
+  | 'positioning'
   | 'textContent';
 
 /** One property-level mismatch. */
@@ -127,6 +135,22 @@ export interface ElementReport {
   warningCount: number;
 }
 
+/**
+ * Something true of the whole run rather than of any one element.
+ *
+ * An Issue belongs to a figmaId. "Three overlays were hidden before measuring"
+ * and "eleven lazy images were loaded eagerly" belong to nothing in the config
+ * — but they changed what every number below them means, so they cannot be
+ * left in the log where the report's reader will never see them.
+ *
+ * `kind` is a closed union so the report can style and order notes without
+ * matching on prose.
+ */
+export interface RunNote {
+  kind: 'overlay' | 'lazyImages' | 'pendingImages';
+  message: string;
+}
+
 /** Summary counters for a whole run. */
 export interface RunSummary {
   elementsChecked: number;
@@ -145,6 +169,12 @@ export interface RunReport {
   /** Viewport the live page was rendered at. */
   viewport: { width: number; height: number };
   summary: RunSummary;
+  /**
+   * Run-level facts about how the page was prepared before measuring. Present
+   * only when there were any; an empty list is omitted so a report of a run
+   * that touched nothing is unchanged.
+   */
+  notes?: RunNote[];
   elements: ElementReport[];
   /**
    * Overall verdict. `pass` when no error-severity issues were found —

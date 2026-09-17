@@ -247,6 +247,19 @@ export const UI_HTML = `<!doctype html>
         </div>
       </div>
     </div>
+    <div class="row" style="margin-top:12px">
+      <div class="field" style="flex:1 1 320px">
+        <label for="overlays">Hide before measuring <span class="sub">&mdash; optional</span></label>
+        <input id="overlays" type="text" autocomplete="off"
+               placeholder=".cookie-banner, #promo-bar">
+      </div>
+    </div>
+    <p class="sub" style="margin-top:6px">
+      Comma-separated selectors for things the design does not draw &mdash; a cookie
+      banner, a promo strip, a chat bubble. One <em>inside</em> the section pushes
+      everything below it down and every offset with it. The run reports what each
+      selector hid, including the ones that hid nothing.
+    </p>
     <p class="sub" style="margin-top:10px" id="fileLine">Loading the Figma file…</p>
   </section>
 
@@ -531,7 +544,24 @@ export const UI_HTML = `<!doctype html>
       })
     };
     if (state.fileKey) config.figmaFileKey = state.fileKey;
+    var overlays = parseOverlays($('overlays').value);
+    if (overlays.length) config.overlays = overlays;
     return config;
+  }
+
+  /**
+   * Split the overlay field into selectors.
+   *
+   * Commas only. A CSS selector list is itself comma-separated, so "a, b" as a
+   * single entry would be valid CSS and would hide both — but then the run
+   * could only say that the pair hid three elements, never which of them hid
+   * none. One selector per entry is what makes the report able to name the
+   * stale one.
+   */
+  function parseOverlays(value) {
+    return String(value || '').split(',').map(function (part) {
+      return part.trim();
+    }).filter(function (part) { return part !== ''; });
   }
 
   function syncJson() { $('json').value = JSON.stringify(currentConfig(), null, 2); }
@@ -567,6 +597,7 @@ export const UI_HTML = `<!doctype html>
       };
     });
     state.section = config.section || '';
+    $('overlays').value = (config.overlays || []).join(', ');
     renderElements();
     scheduleResolve();
   }
@@ -687,7 +718,10 @@ export const UI_HTML = `<!doctype html>
         ' data-i="' + index + '"' +
         ' data-ok="' + (measurable ? '1' : '') + '">' +
         '<td>' + '&nbsp;'.repeat(row.depth * 3) + esc(row.name) +
-          (already ? ' <span class="muted tiny">· picked</span>' : '') + '</td>' +
+          (already ? ' <span class="muted tiny">· picked</span>' : '') +
+          // The box of a shrink-wrapped TEXT layer is its glyphs, not a layout
+          // box. Said here because this list is where the pairing is chosen.
+          (row.hugsText ? ' <span class="muted tiny">· hugs text</span>' : '') + '</td>' +
         '<td class="mono muted tiny">' + esc(row.type) + '</td>' +
         '<td class="mono muted tiny">' + size + '</td></tr>';
     }).join('');
@@ -1073,6 +1107,14 @@ export const UI_HTML = `<!doctype html>
       return n + ((el.checks || []).length);
     }, 0);
 
+    // What was done to the page before anything was measured. Above the
+    // numbers, because it is the ground they were measured on.
+    var notes = (report.notes || []).length
+      ? '<div class="note"><b>Before measuring</b>' +
+          report.notes.map(function (n) { return esc(n.message); }).join('<br>') +
+        '</div>'
+      : '';
+
     var head =
       '<p class="verdict ' + report.status + '">' + report.status.toUpperCase() + '</p>' +
       '<div class="stats">' +
@@ -1082,7 +1124,7 @@ export const UI_HTML = `<!doctype html>
         '<span class="stat"><b>' + s.errorCount + '</b>errors</span>' +
         '<span class="stat"><b>' + s.warningCount + '</b>warnings</span>' +
         '<span class="stat"><b>' + compared + '</b>properties compared</span>' +
-      '</div>' + banner +
+      '</div>' + notes + banner +
       '<div class="tabs" role="tablist">' +
         RESULT_TABS.map(function (t) {
           return '<button class="tab" role="tab" data-tab="' + t.key + '"' +

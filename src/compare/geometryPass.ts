@@ -102,6 +102,18 @@ export function diffGeometry(
   const liveRect = live.boundingRect;
   const issues: Issue[] = [];
 
+  // --- Measurement advisories, before the numbers they qualify. ---
+  //
+  // None of these changes a comparison, raises a tolerance, or suppresses a
+  // finding. Each states a fact about how one side was authored or measured
+  // that changes what the deltas below it MEAN. Triage 001 had to rediscover
+  // every one of them by hand; sixteen of its thirty-five findings were
+  // explained by facts the tool already knew and did not say.
+  for (const advisory of measurementAdvisories(figmaId, figma, live, section, liveRect)) {
+    issues.push(advisory);
+    noteIssue(checks, advisory);
+  }
+
   // --- Size: already relative, compares directly. ---
   const width = compareNumeric(
     figmaId, 'geometry', 'width', figmaRect.width, liveRect.width, tolerances.size, { checks },
@@ -201,6 +213,98 @@ export function diffGeometry(
     issues.push(
       ...diffShadows(figmaId, figma.shadows, live.shadows, tolerances.shadow,
         tolerances.color, checks),
+    );
+  }
+
+  return issues;
+}
+
+/**
+ * The facts about this measurement that the deltas alone do not carry.
+ *
+ * Emitted as `info`, so a run's verdict is identical with and without them —
+ * which is the point: they are evidence for whoever reads the findings, not
+ * part of the finding. They are collected in one place so the list of things
+ * TOVI knows but used to keep to itself can be read at a glance.
+ */
+function measurementAdvisories(
+  figmaId: string,
+  figma: NonNullable<ElementPair['figma']>,
+  live: NonNullable<ElementPair['live']>,
+  section: SectionContext,
+  liveRect: Rect,
+): Issue[] {
+  const issues: Issue[] = [];
+
+  // T-27. A Figma TEXT node can size its own box to the glyphs it contains,
+  // and then the box is the ink — not the column the text was laid out in. A
+  // heading whose live element spans a 1470px content column reports a 742px
+  // Figma box because that is how wide the words happen to be, and the
+  // resulting width and offsetX deltas are arithmetic on the difference:
+  // (1470 - 742) / 2 = 364, exactly the offsetX delta triage 001 reported.
+  //
+  // The comparison is left alone. Suppressing it would hide a text element
+  // genuinely built at the wrong width, and the design file, not the tool, is
+  // where this is fixed — by giving the node a fixed size, or by pairing the
+  // live element against the frame that actually holds it.
+  if (figma.type === 'TEXT' && figma.textAutoResize !== undefined) {
+    const hug = figma.textAutoResize;
+    if (hug === 'WIDTH_AND_HEIGHT' || hug === 'HEIGHT') {
+      const axes = hug === 'WIDTH_AND_HEIGHT' ? 'width and height' : 'height';
+      const affected = hug === 'WIDTH_AND_HEIGHT' ? 'width, height, offsetX and offsetY' : 'height and offsetY';
+      issues.push(
+        valueIssue(
+          figmaId, 'geometry', 'boxShape',
+          `textAutoResize: ${hug} — the design box hugs the glyphs, ${axes} are not laid out`,
+          `${affected} below compare a glyph hug against a laid-out element`,
+          { severity: 'info', detail: 'textAutoResize' },
+        ),
+      );
+    }
+  }
+
+  // T-04. An element that occupies no space produces a delta the size of the
+  // whole design box, which reads exactly like a component that was never
+  // built. The commonest cause is an image with no intrinsic size that has not
+  // loaded — live/extract.ts switches lazy loading off before measuring, so
+  // one still pending here did not arrive within the budget.
+  if (liveRect.width === 0 || liveRect.height === 0) {
+    const pending = live.pendingImages ?? 0;
+    issues.push(
+      valueIssue(
+        figmaId, 'geometry', 'zeroSize',
+        `${round(figma.absoluteBoundingBox.width)}×${round(figma.absoluteBoundingBox.height)} in the design`,
+        `${round(liveRect.width)}×${round(liveRect.height)} on the page — it occupies no space`,
+        {
+          severity: 'info',
+          detail: pending > 0
+            ? `${pending} image${pending === 1 ? '' : 's'} here had not finished loading`
+            : 'display:none, an empty inline, or a replaced element with no intrinsic size',
+        },
+      ),
+    );
+  }
+
+  // T-05. getBoundingClientRect() is viewport-relative, so a fixed or sticky
+  // element's rect is a function of scroll position. TOVI measures at scroll 0
+  // and never moves — invariant 2 — which makes the number reproducible, but
+  // reproducible is not the same as what the design meant. Worse when the
+  // SECTION is the sticky one: every offset in the run is then measured
+  // against a rect that slides.
+  const position = live.position;
+  if (position === 'fixed' || position === 'sticky') {
+    issues.push(
+      valueIssue(
+        figmaId, 'geometry', 'positioning',
+        'a rect anchored to the document',
+        `position: ${position} — anchored to the viewport, measured at scroll 0`,
+        {
+          severity: 'info',
+          detail: figmaId === section.figmaId
+            ? 'this is the section container, so every offset in the run rests on it'
+            : 'its offset holds at the top of the page and nowhere else',
+        },
+      ),
     );
   }
 

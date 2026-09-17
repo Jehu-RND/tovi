@@ -117,6 +117,28 @@ export interface ToviConfig {
    * the config — which keeps this outside the heuristics invariant 7 forbids.
    */
   fontAliases?: Record<string, string>;
+  /**
+   * CSS selectors for page furniture that is not part of the design.
+   *
+   * Cookie banners, promo bars, chat bubbles and notification strips are added
+   * by something other than the build — a consent vendor, a marketing tool —
+   * and the Figma frame does not draw them. A bar that sits *outside* the
+   * section container is already absorbed by section-relative normalization:
+   * both the section and its contents move down together, so every relative
+   * offset is unchanged. One *inside* the section is not absorbed, and shifts
+   * every element below it by its own height.
+   *
+   * Each selector is hidden (`display: none`) before anything is measured, and
+   * the run says how many elements each one hid — including the ones that hid
+   * nothing, because a stale selector that silently matches nothing is exactly
+   * how a config stops doing what its author thinks it does.
+   *
+   * Declared, never detected. There is no list of known cookie-banner class
+   * names in this codebase and there must not be one: guessing which parts of
+   * a page are "not the design" is precisely the heuristic invariant 7 forbids
+   * anywhere near a run.
+   */
+  overlays?: string[];
   elements: ElementConfig[];
 }
 

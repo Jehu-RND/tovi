@@ -8,6 +8,7 @@
     "height": 900,
     "deviceScaleFactor": 1
   },
+  "overlays": [".cookie-banner", "#promo-bar"],
   "tolerances": {
     "size": 1,
     "position": 2,

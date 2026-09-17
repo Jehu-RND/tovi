@@ -31,6 +31,16 @@ export interface LayerRow {
   /** Absent on nodes Figma cannot measure — which cannot be compared either. */
   width?: number;
   height?: number;
+  /**
+   * TEXT nodes whose box is shrink-wrapped to their glyphs rather than laid
+   * out. Set only when true, so a row that says nothing is saying nothing.
+   *
+   * Surfaced here because this is where the mistake is made: a layer picked
+   * from this list becomes a pairing, and a glyph hug paired against a block
+   * element reports a width delta on every run for as long as the config
+   * lives. Cheaper to see it before picking than to triage it afterwards.
+   */
+  hugsText?: boolean;
 }
 
 export interface FlattenOptions {
@@ -71,6 +81,8 @@ export function flattenLayers(file: FigmaFile, options: FlattenOptions = {}): La
     const matchesSearch = options.search === undefined || contains(node.name, options.search);
 
     if (matchesType && matchesSearch) {
+      const hugsText = node.type === 'TEXT' &&
+        (node.textAutoResize === 'WIDTH_AND_HEIGHT' || node.textAutoResize === 'HEIGHT');
       rows.push({
         nodeId: node.id,
         name: node.name,
@@ -78,6 +90,7 @@ export function flattenLayers(file: FigmaFile, options: FlattenOptions = {}): La
         depth,
         path: trail.join(' / '),
         ...(box !== undefined ? { width: box.width, height: box.height } : {}),
+        ...(hugsText ? { hugsText: true } : {}),
       });
     }
 
@@ -179,8 +192,10 @@ export function renderLayers(file: FigmaFile, rows: LayerRow[]): string {
     const size = row.width !== undefined && row.height !== undefined
       ? `${Math.round(row.width)}×${Math.round(row.height)}`
       : '—';
+    // The box is the ink, not a layout box — see LayerRow.hugsText.
+    const hug = row.hugsText === true ? '  hugs text' : '';
     lines.push(
-      `  ${pad(row.nodeId, 12)}${pad(row.type, 11)}${pad(indent + row.name, 46)}${size}`,
+      `  ${pad(row.nodeId, 12)}${pad(row.type, 11)}${pad(indent + row.name, 46)}${size}${hug}`,
     );
   }
 

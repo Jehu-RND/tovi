@@ -166,3 +166,53 @@ describe('renderLayers', () => {
     expect(renderLayers(file, [])).toContain('no layers matched');
   });
 });
+
+/**
+ * `hugsText` — the authoring half of T-27.
+ *
+ * The listing is where a pairing is chosen, so it is where the choice can
+ * still be cheap to change.
+ */
+describe('flattenLayers — glyph-hugging text layers', () => {
+  const hugFile: FigmaFile = {
+    name: 'Sport-Specific Landing Page',
+    document: {
+      id: '0:0',
+      name: 'Document',
+      type: 'DOCUMENT',
+      children: [
+        node('1:1', 'Page', 'CANVAS', [
+          { ...node('1:23', 'heading', 'TEXT'), textAutoResize: 'WIDTH_AND_HEIGHT' },
+          { ...node('1:24', 'body', 'TEXT'), textAutoResize: 'HEIGHT' },
+          { ...node('1:25', 'label', 'TEXT'), textAutoResize: 'NONE' },
+          { ...node('1:26', 'card', 'FRAME'), textAutoResize: 'WIDTH_AND_HEIGHT' },
+        ]),
+      ],
+    },
+  };
+
+  const rows = flattenLayers(hugFile);
+  const byName = (name: string) => rows.find((row) => row.name === name);
+
+  it('flags a TEXT layer that shrink-wraps both axes', () => {
+    expect(byName('heading')?.hugsText).toBe(true);
+  });
+
+  it('flags one that shrink-wraps only its height', () => {
+    expect(byName('body')?.hugsText).toBe(true);
+  });
+
+  it('leaves a laid-out TEXT layer unflagged rather than flagged false', () => {
+    expect(byName('label')?.hugsText).toBeUndefined();
+  });
+
+  it('never flags a node that is not TEXT', () => {
+    expect(byName('card')?.hugsText).toBeUndefined();
+  });
+
+  it('marks the flagged rows in the listing, and only those', () => {
+    const rendered = renderLayers(hugFile, rows).split('\n');
+    expect(rendered.find((line) => line.includes('heading'))).toContain('hugs text');
+    expect(rendered.find((line) => line.includes('label'))).not.toContain('hugs text');
+  });
+});

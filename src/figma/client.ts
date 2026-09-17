@@ -63,6 +63,11 @@ export interface RawFigmaNode {
   paddingBottom?: number;
   paddingLeft?: number;
   characters?: string;
+  /**
+   * TEXT nodes only: "NONE" | "HEIGHT" | "WIDTH_AND_HEIGHT" | "TRUNCATE".
+   * Says whether the node's box was laid out or shrink-wrapped to its glyphs.
+   */
+  textAutoResize?: string;
   style?: Record<string, unknown>;
   children?: RawFigmaNode[];
   [key: string]: unknown;

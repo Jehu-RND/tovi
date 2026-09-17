@@ -80,6 +80,21 @@ export interface Borders {
  */
 export type StrokeAlign = 'INSIDE' | 'OUTSIDE' | 'CENTER';
 
+/**
+ * How a Figma TEXT node decides the size of its own box.
+ *
+ * Only `NONE` gives a box anyone laid out on purpose. `HEIGHT` fixes the width
+ * and lets the height follow the wrapped glyphs; `WIDTH_AND_HEIGHT` shrink-
+ * wraps both axes, so the box is the ink and nothing else — a heading whose
+ * live element spans a 1470px column reports a 742px Figma box for no reason
+ * other than that the words happen to be that wide.
+ *
+ * TOVI never changes a comparison because of this. It says so, because a
+ * width delta explained by the authoring of the design file is a different
+ * fact from a width delta caused by the build.
+ */
+export type TextAutoResize = 'NONE' | 'HEIGHT' | 'WIDTH_AND_HEIGHT' | 'TRUNCATE';
+
 /** A single drop/inner shadow layer. */
 export interface Shadow {
   offsetX: Px;
@@ -163,6 +178,12 @@ export interface FigmaSpec {
   text?: TextSpec;
   /** Literal string content, used only to warn about obvious copy drift. */
   characters?: string;
+  /**
+   * TEXT nodes only: whether the node's box is a layout box or a glyph hug.
+   * Absent on every other node type, and on a TEXT node Figma did not report
+   * it for. See TextAutoResize.
+   */
+  textAutoResize?: TextAutoResize;
 }
 
 /* ------------------------------------------------------------------ *
@@ -202,6 +223,24 @@ export interface LiveStyles {
   text: TextSpec;
   /** textContent, trimmed and whitespace-collapsed. */
   textContent: string;
+
+  /**
+   * Computed `position`. `fixed` and `sticky` are anchored to the viewport
+   * rather than to the document, so their rect is a function of scroll — and
+   * TOVI measures at scroll 0, never anywhere else.
+   *
+   * Optional only because a measurement taken before this existed has none.
+   */
+  position?: string;
+  /**
+   * Images inside this element (the element itself included) that had not
+   * finished loading when it was measured.
+   *
+   * The reason a box can measure 0×0 or short: an `<img>` with no intrinsic
+   * size contributes nothing to layout until its bytes arrive. Reported, not
+   * corrected — see the lazy-image note in live/extract.ts.
+   */
+  pendingImages?: number;
 }
 
 /* ------------------------------------------------------------------ *

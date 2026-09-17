@@ -12,7 +12,7 @@
 
 import type { ToviConfig } from '../config/schema.js';
 import type {
-  Check, ElementReport, Issue, IssueProperty, RunReport, RunSummary, Severity,
+  Check, ElementReport, Issue, IssueProperty, RunNote, RunReport, RunSummary, Severity,
 } from './types.js';
 import type { LiveStyles } from '../types.js';
 
@@ -25,6 +25,9 @@ const PROPERTY_ORDER: IssueProperty[] = [
   'missingInLive',
   'ambiguousInLive',
   'skipped',
+  'boxShape',
+  'zeroSize',
+  'positioning',
   'width',
   'height',
   'offsetX',
@@ -152,6 +155,7 @@ export function buildRunReport(
   timestamp: string,
   checks: Check[] = [],
   live?: Map<string, LiveStyles>,
+  notes: RunNote[] = [],
 ): RunReport {
   const elements = mergeIssues(config, issues);
   const summary = summarize(elements);
@@ -188,6 +192,9 @@ export function buildRunReport(
     figmaFileKey: config.figmaFileKey ?? '',
     viewport: { width: config.viewport.width, height: config.viewport.height },
     summary,
+    // Omitted rather than empty: a run that hid nothing and loaded nothing
+    // eagerly produces the report it always did, byte for byte.
+    ...(notes.length > 0 ? { notes } : {}),
     elements,
     status: summary.errorCount > 0 ? 'fail' : 'pass',
   };

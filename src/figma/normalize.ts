@@ -15,6 +15,7 @@ import type {
   Rgba,
   Shadow,
   StrokeAlign,
+  TextAutoResize,
   TextSpec,
 } from '../types.js';
 import { fromFigmaColor } from '../compare/color.js';
@@ -202,6 +203,23 @@ export function extractBorders(node: RawFigmaNode): Borders | undefined {
 
   const anyDrawn = SIDES.some((side) => borders[side].width > 0);
   return anyDrawn ? borders : undefined;
+}
+
+/**
+ * Read how a TEXT node sizes its own box.
+ *
+ * Figma omits this on every node type that is not TEXT, and on a TEXT node it
+ * is one of four documented values. An unrecognised value returns undefined
+ * rather than a guess: the only thing this drives is an advisory, and an
+ * advisory that states something untrue about the design file is worse than no
+ * advisory at all.
+ */
+export function extractTextAutoResize(node: RawFigmaNode): TextAutoResize | undefined {
+  const raw = str(node as unknown as Record<string, unknown>, 'textAutoResize');
+  if (raw === 'NONE' || raw === 'HEIGHT' || raw === 'WIDTH_AND_HEIGHT' || raw === 'TRUNCATE') {
+    return raw;
+  }
+  return undefined;
 }
 
 /** Normalize Figma's stroke alignment, defaulting to its own default. */
@@ -394,6 +412,7 @@ export function normalizeFigmaNode(node: RawFigmaNode, figmaId: string): FigmaSp
   const shadows = extractShadows(node.effects);
   const text = isText ? extractTextSpec(node.style) : undefined;
   const characters = isText ? node.characters : undefined;
+  const textAutoResize = isText ? extractTextAutoResize(node) : undefined;
 
   return {
     figmaId,
@@ -410,5 +429,6 @@ export function normalizeFigmaNode(node: RawFigmaNode, figmaId: string): FigmaSp
     ...(shadows.length > 0 ? { shadows } : {}),
     ...(text !== undefined ? { text } : {}),
     ...(characters !== undefined ? { characters } : {}),
+    ...(textAutoResize !== undefined ? { textAutoResize } : {}),
   };
 }

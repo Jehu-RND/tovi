@@ -305,3 +305,47 @@ describe('font weight resolves from the style name', () => {
       .toBe(450);
   });
 });
+
+/**
+ * `textAutoResize` — T-27.
+ *
+ * Read so the report can say when a TEXT node's box is its glyphs rather than
+ * a layout box. Nothing downstream compares it; it only ever explains.
+ */
+describe('normalizeFigmaNode — textAutoResize', () => {
+  function textNode(overrides: Partial<RawFigmaNode> = {}): RawFigmaNode {
+    return node({
+      type: 'TEXT',
+      characters: 'Built for every player',
+      style: { fontFamily: 'Gotham', fontSize: 40 },
+      ...overrides,
+    });
+  }
+
+  it('carries a shrink-wrapped TEXT node through to the spec', () => {
+    expect(normalizeFigmaNode(textNode({ textAutoResize: 'WIDTH_AND_HEIGHT' }), 'heading')
+      .textAutoResize).toBe('WIDTH_AND_HEIGHT');
+  });
+
+  it('carries the height-only form, which hugs one axis', () => {
+    expect(normalizeFigmaNode(textNode({ textAutoResize: 'HEIGHT' }), 'heading')
+      .textAutoResize).toBe('HEIGHT');
+  });
+
+  it('ignores the field on a node that is not TEXT', () => {
+    // Figma does not report it on a FRAME, and a FRAME's box is always laid
+    // out — reading it anyway would let one stray field produce an advisory
+    // about a node the advisory is not true of.
+    expect(normalizeFigmaNode(node({ textAutoResize: 'WIDTH_AND_HEIGHT' }), 'hero')
+      .textAutoResize).toBeUndefined();
+  });
+
+  it('drops a value outside the four Figma documents', () => {
+    expect(normalizeFigmaNode(textNode({ textAutoResize: 'SOMETHING_NEW' }), 'heading')
+      .textAutoResize).toBeUndefined();
+  });
+
+  it('leaves it absent when Figma did not report it at all', () => {
+    expect(normalizeFigmaNode(textNode(), 'heading').textAutoResize).toBeUndefined();
+  });
+});

@@ -17,6 +17,11 @@ dist/
 out/
 reports/
 
+# ...but test fixtures are source, not output. The lazy-image integration suite
+# needs a real image file on disk: a data: URI is not deferred the way a fetched
+# one is, so the trap it exercises would not happen.
+!tests/fixtures/*.png
+
 # Test + tooling caches
 coverage/
 .vitest/
