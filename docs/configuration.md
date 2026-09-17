@@ -35,6 +35,7 @@ in [src/config/loadConfig.ts](../src/config/loadConfig.ts). A worked example is
 | `viewport` | **yes** | Browser viewport for the Playwright run |
 | `timeout` | no | Navigation timeout in ms. Default `30000` |
 | `tolerances` | no | Run-level thresholds; defaults are merged in |
+| `overlays` | no | Selectors for page furniture to hide before measuring. See below |
 | `elements` | **yes** | The elements to check. Must be non-empty |
 
 Validation is strict and eager: wrong types, negative tolerances, unknown
@@ -264,3 +265,67 @@ spacing difference, and it cannot make unrelated fonts match — declaring
 `Gotham` → `Hco Gotham` still reports `Gotham` against `Comic Sans MS`. Writing
 one is a deliberate statement by whoever authors the config, which is what keeps
 it outside the fuzzy matching invariant 7 forbids.
+
+
+## `overlays`
+
+Selectors for things on the page that the design does not draw — a cookie
+banner, a promo strip, a chat bubble, a notification bar. Each is hidden with
+`display: none` before a single element is measured.
+
+```json
+{
+  "overlays": [".cookie-banner", "#promo-bar"]
+}
+```
+
+**Whether you need this depends on where the thing sits.** A bar *outside* the
+section container costs nothing: the section and everything inside it move down
+together, and section-relative normalization cancels the shift exactly. A bar
+*inside* the section shifts every element below it by its own height, and
+nothing cancels that — every `offsetY` in the run is wrong by 64px, or however
+tall the bar happens to be that week.
+
+`display: none`, not `visibility: hidden`: an invisible promo bar still occupies
+its strip of layout, and occupying layout is the entire problem.
+
+### The run says what each one hid
+
+```
+TOVI FAIL  https://example.com/  (1728x1080)
+  note    overlay ".cookie-banner" hid 1 element before measuring
+  note    overlay "#promo-bar" matched nothing — it hid no part of the page
+```
+
+The second line is the useful one. A selector that hides nothing is how a config
+stops doing what its author thinks it does — the consent vendor renames a class,
+the banner comes back, and every offset moves 64px without anything in the
+config changing. Silence there would be indistinguishable from success, which
+is what [invariant 3](../AGENTS.md#invariants--do-not-break-these) forbids.
+
+A selector the browser cannot parse is reported as such rather than throwing:
+one bad entry must not cost the run its other five.
+
+### Declared, never detected
+
+There is no list of known cookie-banner class names in this codebase and there
+must not be one. Deciding which parts of a page are "not really the design" is a
+judgement call, and a judgement call made by the tool is the heuristic
+[invariant 7](../AGENTS.md#invariants--do-not-break-these) keeps out of a run.
+Writing an overlay selector is a deliberate statement by whoever authors the
+config.
+
+### Lazy images need no configuration
+
+A related problem needs no declaring. The extractor never scrolls — that is
+[invariant 2](../AGENTS.md#invariants--do-not-break-these), and scrolling would
+corrupt the shared coordinate origin every position is measured against. A
+`loading="lazy"` image below the fold is therefore never fetched, measures
+`0×0`, and reports a size delta the size of the whole image plus a wrong offset
+on everything beneath it.
+
+So every `<img loading="lazy">` is switched to `eager` before measuring, and the
+run waits up to five seconds for the images to arrive. There is nothing to
+decide: the answer to "which images should load" is all of them. The run says
+how many were promoted, and how many had still not arrived when the budget ran
+out.

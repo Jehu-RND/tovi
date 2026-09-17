@@ -91,8 +91,10 @@ belongs in a normalizer instead.
    is passed through `normalizeFigmaNode()`; a node that cannot be expressed as
    a `FigmaSpec` becomes a `missingInFigma` issue rather than crashing the run.
 3. **Extract the live side.** `extractLiveStyles()` launches Chromium, navigates,
-   settles, and measures every element in **one** `page.evaluate()`. Returns
-   `styles`, `missing`, and `ambiguous`.
+   **prepares the page**, settles, and measures every element in **one**
+   `page.evaluate()`. Preparation is the declared overlays hidden and every
+   `loading="lazy"` image switched to eager; both change layout, so both are
+   reported. Returns `styles`, `missing`, `ambiguous`, `overlays` and `images`.
 4. **Compare.** `compareAll()` walks the config in order, resolves each element's
    effective tolerances, and dispatches to the configured passes.
 5. **Report.** `buildRunReport()` groups issues by element and computes counters;
@@ -143,6 +145,8 @@ What enforces it:
 | Animations and transitions zeroed, `scroll-behavior: auto` | `live/extract.ts` |
 | `load` + `document.fonts.ready` + a fixed settle before measuring — never network-idle, whose timing depends on third parties | `live/extract.ts` |
 | Viewport pinned; the page is never scrolled | `live/extract.ts` |
+| Lazy images loaded where they stand rather than scrolled to, on a fixed 5s budget | `live/extract.ts` |
+| Overlays hidden in config order; run notes emitted in a fixed order | `live/extract.ts`, `index.ts` |
 | Elements sorted by config order | `report/merge.ts` |
 | Issues sorted by severity, then a fixed property order, then `detail` | `report/merge.ts` |
 | Deltas rounded to 3 decimals before comparison | `compare/issues.ts` |
@@ -188,7 +192,7 @@ missing node into a reportable issue.
 
 ## Tests
 
-181 tests across 11 files, one per module boundary.
+244 tests across 12 files, one per module boundary.
 
 | File | Covers |
 | --- | --- |

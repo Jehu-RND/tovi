@@ -27,8 +27,9 @@ first-time user is not expected to have one yet.
 
 Three steps, in order:
 
-1. **The page** — the URL and a screen size, chosen from presets. The Figma file
-   is resolved in the background from `FIGMA_FILE_KEY`; you only supply a key if
+1. **The page** — the URL and a screen size, chosen from presets, plus an
+   optional list of selectors to **hide before measuring**. The Figma file is
+   resolved in the background from `FIGMA_FILE_KEY`; you only supply a key if
    you want a different file.
 2. **Pick the layers** — the Figma page is a dropdown populated from the file.
    Click the layers you want checked. Layers Figma cannot measure (pages, hidden
@@ -40,11 +41,38 @@ Three steps, in order:
 Results render per element: property, design value, live value, and the delta
 against the tolerance it was tested against.
 
+## Hiding what the design does not draw
+
+A cookie banner or promo strip *inside* the section container pushes everything
+below it down, and section-relative normalization cannot absorb that — every
+offset in the run comes back wrong by the height of the bar. The **Hide before
+measuring** field takes a comma-separated list of selectors, one per entry:
+
+```
+.cookie-banner, #promo-bar
+```
+
+One selector per entry on purpose. A CSS selector list is itself
+comma-separated, so `.a, .b` as a single entry would be valid CSS and hide
+both — but then the run could only report that the pair hid three elements,
+never which of the two hid none. The results say what each selector hid,
+including the ones that hid nothing.
+
+Nothing needs declaring for lazy-loaded images: they are switched to eager
+before measuring, and the results say how many. See
+[configuration.md](configuration.md#overlays).
+
 ## Picking a layer picks what is inside it
 
 A screen is a container plus the things in it, and clicking sixteen rows to say
 so is the tedium the layer list exists to remove. **Click one layer and its
 whole subtree comes with it**, as far down as the depth you are viewing.
+
+A row marked **`· hugs text`** is a Figma TEXT layer whose box is shrink-wrapped
+to its glyphs rather than laid out. Pairing one against a block-level element
+reports a width delta on every run for as long as the config lives, so it is
+worth seeing before picking rather than triaging afterwards — see
+[tagging.md](tagging.md#pairing-traps).
 
 The children are then matched against the page, and the ones that are not
 really there are dropped:
@@ -145,6 +173,11 @@ The selector is what you wrote; the middle is the element the page actually
 handed back, in the form devtools shows it. A finding that says a height is 15px
 out is only actionable once you know which `div` that is, and a layer called
 "More content" does not say.
+
+Above the tabs, a **Before measuring** panel appears when the run changed
+anything about the page first — overlays hidden, lazy images promoted, images
+that never arrived. It sits above the findings because every number below it was
+measured on the page it describes.
 
 Five tabs filter the same report without re-running anything:
 

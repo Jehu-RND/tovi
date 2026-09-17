@@ -6,9 +6,9 @@ _Last updated: 2026-09-17_
 
 | Status | Count |
 | --- | --- |
-| Done | 46 |
+| Done | 53 |
 | In Progress | 2 |
-| Todo | 18 |
+| Todo | 14 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
 [PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
@@ -46,24 +46,26 @@ debug, catalogued in [docs/troubleshooting.md](docs/troubleshooting.md).
 | --- | --- | --- |
 | ~~T-01~~ | ~~Confirm the Figma frame width matches `viewport.width`~~ | **Done in triage 001.** Ran at 1728; the hero matched 1728×972 exactly and no width drift was attributable to the viewport |
 | ~~T-02~~ | ~~Decide the `fontWeight` tolerance for Gotham~~ | **Answered in triage 001: do not change the tolerance.** The `350` is a variable-font axis value; the same node reports `fontStyle: "Medium"`, which is 500 in CSS, and the build is correct. Loosening the tolerance would hide the genuine Bold-700-vs-600 finding on another node. Superseded by T-28 |
-| T-03 | Handle cookie banner / promo bar offset | Absorbed by normalization only when the banner sits *outside* the section |
-| T-04 | Handle lazy-loaded images measuring `0×0` | The extractor never scrolls, by design. Needs explicit sizing or `loading="eager"` |
-| T-05 | Confirm sticky-header behaviour at scroll 0 | Measured expanded; verify that is what the design shows |
+| ~~T-03~~ | ~~Handle cookie banner / promo bar offset~~ | **Done.** A declared `overlays` list of CSS selectors, hidden before anything is measured. The run reports what each hid, *including the ones that hid nothing* — a stale selector is how a config silently stops working. Declared, never detected: there is no list of known banner class names and there must not be one |
+| ~~T-04~~ | ~~Handle lazy-loaded images measuring `0×0`~~ | **Done.** Every `<img loading="lazy">` is switched to eager before measuring, with a 5s budget; the run says how many were promoted and how many never arrived. An element that still measures 0×0 gets a `zeroSize` advisory naming the cause. Nothing scrolls — invariant 2 holds. An integration test measures the image at 0×0 *without* the fix, so the trap is proved rather than described |
+| ~~T-05~~ | ~~Confirm sticky-header behaviour at scroll 0~~ | **Done, and it is a real risk rather than a real problem.** `#main-header` measured 72px at scroll 0 and matched the design exactly. A `fixed` or `sticky` element's rect is still viewport-anchored, so it now reports a `positioning` advisory — louder when the *section container* is the sticky one, since every offset in the run then rests on a rect that slides |
 | ~~T-06~~ | ~~Triage false positives and tune tolerances~~ | **Done in triage 001.** Verdict: no tolerance needs tuning. The noise is four specific causes, addressed by T-27–T-30, not by widening thresholds |
+| T-39 | **Re-run triage 001 and diff it** | Four noise classes are gone and three environmental risks are handled, and nobody has confirmed the 35 findings actually drop to the predicted ~19. Reports are byte-identical between runs, so this is a real check rather than a formality. Everything claimed above is arithmetic until it is a measurement |
 
 ### From triage 001 — the noise has four causes
 
-Each of these removes a class of false positive **without weakening a check**.
-Ordered by how much noise they remove. Full reasoning in
+**All four are closed.** Each removed a class of false positive **without
+weakening a check**: no tolerance was raised and no comparison was deleted.
+Full reasoning in
 [docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md).
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| T-27 | **Warn when a text node's box is not a layout box** | Part of the largest noise class (8 of 35 findings). A Figma TEXT node with `textAutoResize: WIDTH_AND_HEIGHT` hugs its glyphs, so comparing its width/offsetX to a block-level element is meaningless. `textAutoResize` is already in the API response. Warn at config-load or probe time — an authoring guard, not a comparison change |
+| ~~T-27~~ | ~~Warn when a text node's box is not a layout box~~ | **Done, at both ends.** `tovi layers` and the UI's layer list mark the row `hugs text`, so the pairing can be reconsidered before it is made; a run reports an `info` `boxShape` finding beside the deltas it explains. The comparison is untouched — a text element genuinely built at the wrong width still has to fail |
 | ~~T-28~~ | ~~Prefer `fontStyle` over the raw numeric `fontWeight`~~ | **Done.** A closed CSS Fonts Level 4 name table; slant, spacing and case ignored; a name outside it (a foundry's `Book`) falls back to Figma's number. Killed the Gotham `350` false positive and left the genuine Bold-700-vs-600 finding standing, pinned by a test |
 | ~~T-29~~ | ~~Do not compare box borders on a TEXT node~~ | **Done.** Widths are no longer compared on a TEXT node; the stroke is reported as `info` naming `-webkit-text-stroke`, so it never becomes silence. Borders on every other node type compare exactly as before, pinned by a test |
 | ~~T-30~~ | ~~Declared font-family aliases in the config~~ | **Done.** `fontAliases` in the config, read in both directions, normalized the same way the comparison is. Only makes two *names* equal — it cannot mask a size or weight difference, and unrelated fonts still report |
-| T-31 | **Document the pairing traps in `docs/tagging.md`** | The 526px gap and the `backgroundColor` finding were both one bad pairing: `.wrap` excludes the header and footer that the frame draws. Also worth naming: this design file has pasted screenshots of the live site as layers, which must never be paired |
+| ~~T-31~~ | ~~Document the pairing traps in `docs/tagging.md`~~ | **Done.** Seven traps, each one that has actually happened: the two node ids in a Figma URL, the container that is not the page (the 526px gap and the `backgroundColor` finding were one bad pairing), pasted screenshots of the live site as layers, a text box that is its glyphs, a design column against a full-bleed element, a selector matching twenty-five things, and page furniture the design does not draw |
 
 ### Config authoring ergonomics
 
@@ -163,7 +165,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 | ID | Task | Notes |
 | --- | --- | --- |
 | T-17 | Add the `FIGMA_TOKEN` secret and commit a `tovi.ci.json` | The two prerequisites `design-check.yml` checks for. Both need repo settings and a real URL |
-| T-18 | Flip `fail_on_drift` on once findings are trusted | The workflow ships report-only. Tightening it is a judgement call that depends on P-02's triage |
+| T-18 | Flip `fail_on_drift` on once findings are trusted | The workflow ships report-only. All four noise classes are now closed at the source, so the remaining question is a re-run of triage 001 to confirm the 35 findings actually drop to the predicted ~19 |
 
 ### Project
 
@@ -171,6 +173,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 | --- | --- | --- |
 | T-19 | Decide licence and distribution | Currently `UNLICENSED` / `private: true` |
 | ~~T-20~~ | ~~Update PROGRESS.md percentage after P-02~~ | **Done.** ~65% → ~80%; real-site hardening 0% → 55%, config ergonomics 0% → 40% |
+| ~~T-40~~ | ~~Update PROGRESS.md after the hardening work~~ | **Done.** ~80% → ~88%; real-site hardening 55% → 75%, and the four triage noise classes closed |
 
 ---
 
@@ -205,10 +208,12 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 
 | ID | Task |
 | --- | --- |
-| D-16 | 100 tests across 8 suites, one per module boundary (181 across 11 today) |
+| D-16 | 100 tests across 8 suites, one per module boundary (244 across 12 today) |
 | D-17 | Verified against the **real Figma REST API** — fills, text metrics, padding, and the TEXT-vs-frame fill distinction all confirmed on live data |
 | D-18 | Verified against **real Chromium** — percentage border-radius, computed `box-shadow` parsing, NaN survival across the Playwright bridge |
 | D-19 | **Full pipeline validated** — real Figma nodes vs a local fixture with three planted defects. All three caught, plus a missing element, with zero false positives |
+| D-25 | **First green run against a real app** — a React app built from a Figma frame: 11 elements, 66 properties compared, `PASS`. Re-running with every tolerance forced to 0 surfaced sub-pixel deltas (0.078px, 0.141px), confirming the pass is a real measurement agreeing rather than a check that did nothing |
+| D-26 | **Real-site hardening verified against real Chromium** — `tests/fixtures/hardening.html` puts a 64px promo bar inside the section, a `loading="lazy"` image 10,000px down, and a sticky header on one page. The lazy-image suite measures the image at `0×0` through a plain browser load *before* asserting the fix, so the trap is proved rather than described. `report/merge.ts` also got its first direct suite: `PROPERTY_ORDER` is the only thing keeping two runs byte-identical and rested on code inspection. Test count 181 → 244 |
 
 ### Documentation and repo setup
 
@@ -242,7 +247,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 
 ## Notes
 
-**Test count is now 181** across 11 suites, up from 100. `npm test` still passes
+**Test count is now 244** across 12 suites, up from 100. `npm test` still passes
 without Chromium because the integration suite skips itself — install it before
 trusting a green run.
 

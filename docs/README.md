@@ -43,7 +43,7 @@ decision the whole tool rests on.
 
 ## Project status
 
-The engine is feature-complete and covered by 162 passing tests, including two
+The engine is feature-complete and covered by 244 passing tests, including two
 integration suites that drive real Chromium. It **has** been run against a real
 production page and the output triaged finding by finding — see
 [triage 001](triage-001-mens-basketball.md) for the verdict, and

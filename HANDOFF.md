@@ -1,7 +1,7 @@
 # Handoff
 
-_Written 2026-09-14. Updated 2026-09-17, after the triage and the work it set off.
-On `main`, working tree clean._
+_Written 2026-09-14. Updated 2026-09-17, after the triage, the work it set off,
+and the real-site hardening that followed. On `main`, working tree clean._
 
 Read this first if you are picking TOVI up. It covers where the project actually
 stands, what changed recently and why, and what to do next. It does not repeat
@@ -13,23 +13,29 @@ full task list), or [docs/](docs/) (the reference).
 ## Where this stands in one paragraph
 
 TOVI compares a Figma design against a live page and reports where the build
-drifted. The engine is finished, covered by 181 tests, has been **run end to
+drifted. The engine is finished, covered by 244 tests, has been **run end to
 end against the real target**, and — as of
 [docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md) — has
 been **triaged finding by finding**. The verdict: the findings are trustworthy.
 The section container passed clean; of 35 findings **19 were genuine** and the
 other 16 fell into four classes of noise, none of them a miscomparison.
 
-Since that triage, **three of those four classes have been removed at the
-source** — T-28 (`fontWeight` from the style name), T-29 (no box border on a
-TEXT node), T-30 (declared font aliases). None of them widened a tolerance. The
-fourth, the box-shape class, is T-27 and is the one still standing.
+**All four noise classes are now closed at the source** — T-28 (`fontWeight`
+from the style name), T-29 (no box border on a TEXT node), T-30 (declared font
+aliases) and T-27 (a TEXT box that hugs its glyphs). So are the **three
+real-site risks** that were catalogued before the first run and never
+exercised: T-03 (cookie banners and promo bars), T-04 (lazy images measuring
+`0×0`) and T-05 (sticky headers). Not one of them widened a tolerance or
+deleted a comparison.
 
 Separately, T-32 closed the authoring trap that made a first run look broken:
-the UI no longer pre-fills a `data-figma-id` selector the page does not have.
+the UI no longer pre-fills a `data-figma-id` selector the page does not have,
+and T-31 wrote the pairing traps down.
 
-What remains: **T-27**, one documentation task (**T-31**), and the first genuine
-defect the tool found, which is waiting on whoever owns the theme.
+What remains, and it is short: **re-run triage 001 and diff it** — nobody has
+confirmed the 35 findings actually drop where the arithmetic says they should —
+**P-03**, which is a question for whoever owns the design file, and the first
+genuine defect the tool found, which is waiting on whoever owns the theme.
 
 ---
 
@@ -56,8 +62,9 @@ This distinction matters more than the test count.
 
 | | Verified against |
 | --- | --- |
-| Comparison engine, both passes | 181 unit tests |
+| Comparison engine, both passes | 244 unit tests |
 | Browser extraction | Real Chromium, `tests/fixtures/page.html` |
+| Cookie banners, lazy images, sticky headers | Real Chromium, `tests/fixtures/hardening.html`. The lazy-image suite measures the image at `0×0` **without** the fix first, so the trap is proved rather than described |
 | Figma normalization | The real API, real nodes |
 | Full pipeline | **The real site and real design file** |
 | Whether the findings are *trustworthy* | **A finding-by-finding triage.** Every delta re-derived from independently measured values; all held |
@@ -78,10 +85,10 @@ The 35 findings sort into exactly four causes, and the split is the useful part:
 
 | Cause | Findings | Verdict |
 | --- | --- | --- |
-| Box-shape mismatch (`width`, `offsetX`) | 8 | Authoring trap. A `textAutoResize: WIDTH_AND_HEIGHT` node hugs its glyphs; the rest are a 1604 design column against full-bleed 1728 elements. Arithmetic confirms both: `(1470−742)/2 = 364` and `(1728−1604)/2 = 62`, exactly the reported `offsetX` deltas |
-| Figma's `fontWeight: 350` | 1 | False positive. It is a variable-font axis value; the node's `fontStyle: "Medium"` is 500 in CSS and the build is right |
-| A stroke on a TEXT node compared as a CSS border | 4 | Tool gap. A glyph outline has no `border` equivalent, so the check can only fail |
-| Font family under a foundry-prefixed name | 3 | Tool gap. `Gotham` vs `"Hco Gotham"` — same typeface, fires on every text element |
+| Box-shape mismatch (`width`, `offsetX`) | 8 | Authoring trap. A `textAutoResize: WIDTH_AND_HEIGHT` node hugs its glyphs; the rest are a 1604 design column against full-bleed 1728 elements. Arithmetic confirms both: `(1470−742)/2 = 364` and `(1728−1604)/2 = 62`, exactly the reported `offsetX` deltas. **Now named by T-27** — the deltas still report, with a `boxShape` advisory beside them |
+| Figma's `fontWeight: 350` | 1 | False positive. It is a variable-font axis value; the node's `fontStyle: "Medium"` is 500 in CSS and the build is right. **Closed by T-28** |
+| A stroke on a TEXT node compared as a CSS border | 4 | Tool gap. A glyph outline has no `border` equivalent, so the check can only fail. **Closed by T-29** |
+| Font family under a foundry-prefixed name | 3 | Tool gap. `Gotham` vs `"Hco Gotham"` — same typeface, fires on every text element. **Closed by T-30** |
 | **Real build defects** | **19** | Genuine. See below |
 
 **The real defect worth acting on first:** all three headings are missing their
@@ -152,7 +159,36 @@ measures 1440×151 at a 1440 viewport and 1500×151 at 1728.
 
 ## What changed recently
 
-**Acting on the triage (latest).** Nine commits. Three of the four noise
+**Real-site hardening (latest).** The three risks catalogued before the first
+run and never exercised, plus the last of the four noise classes. Test count
+181 → 244.
+
+| Task | What |
+| --- | --- |
+| **T-03** | A declared `overlays` list of CSS selectors, hidden before anything is measured. The run reports what each one hid — **including the ones that hid nothing**, because a stale selector is how a config silently stops doing its job. Declared, never detected: there is no list of known banner class names in the codebase and there must not be one |
+| **T-04** | Every `<img loading="lazy">` is switched to eager before measuring, with a 5s budget. Nothing scrolls — invariant 2 holds; the image is made to load where it stands. An element that still measures `0×0` gets a `zeroSize` advisory naming the cause |
+| **T-05** | A `fixed` or `sticky` element reports a `positioning` advisory saying its rect is viewport-anchored and was measured at scroll 0 — louder when the *section container* is the sticky one, since every offset in the run then rests on a rect that slides |
+| **T-27** | `tovi layers` and the UI's layer list mark a glyph-hugging TEXT layer `hugs text`, so a pairing can be reconsidered before it is made; a run reports an `info` `boxShape` finding beside the deltas it explains |
+| **T-31** | Seven pairing traps written down in [docs/tagging.md](docs/tagging.md#pairing-traps), every one of them a mistake that has actually happened |
+| — | `report/merge.ts` got its first direct test suite. It had none, which meant `PROPERTY_ORDER` — the only thing keeping two runs byte-identical — rested on code inspection. The new suite pins the whole order explicitly, so adding a property cannot go unreviewed |
+
+Three things worth knowing about that work:
+
+- **`RunReport` gained `notes`.** Everything the extractor changes about the
+  page before measuring it is reported at the top of the report, the JSON and
+  the terminal summary. A page quietly altered is a page whose numbers cannot be
+  trusted. Notes are emitted in a fixed order, so runs stay byte-identical.
+- **Three new `IssueProperty` values**, all `info`: `boxShape`, `zeroSize`,
+  `positioning`. None fails a run and none suppresses the finding it explains —
+  a text element genuinely built at the wrong width still has to fail. Trading a
+  false positive for a false negative is the worse trade.
+- **The lazy-image test has a control.** It measures the image at `0×0` through
+  a plain Chromium load before asserting that extraction measures it at
+  240×160. Without that control the test could be passing because Chromium
+  loaded the image anyway — which is exactly what happens at 3,000px of offset
+  and stops happening at 10,000px.
+
+**Acting on the triage.** Nine commits. Three of the four noise
 classes removed at the source, the authoring trap that caused a fourth closed,
 and the results view rebuilt around the questions the triage found it could not
 answer. Test count 162 → 181.
@@ -224,6 +260,33 @@ become silence.
 the same typeface under a foundry-prefixed name. The config takes an explicit
 `fontAliases` map. It is not fuzzy matching and must not become it — invariant 7.
 
+**Page furniture is declared, never detected.** `overlays` takes CSS selectors
+for cookie banners and promo bars, which are hidden before anything is
+measured. There is no list of known banner class names in this codebase and
+there must not be one — deciding which parts of a page are "not really the
+design" is a judgement call, and a judgement call made by the tool is the
+heuristic invariant 7 keeps out of a run. Same reasoning as `fontAliases`.
+
+**Lazy images are loaded, not scrolled to.** The obvious fix for an image that
+measures `0×0` is to scroll it into view, and it is the one fix that is
+forbidden: invariant 2 exists because every position in the run is normalized
+against a section rect measured at the same scroll origin. Switching
+`loading="lazy"` to `eager` makes the image load where it stands. There is
+nothing to guess — the answer to "which images should load" is all of them.
+
+**An advisory never suppresses the finding it explains.** `boxShape`,
+`zeroSize` and `positioning` are `info` and change no verdict. The tempting
+version of T-27 suppresses the width comparison on a glyph-hugging node, and it
+is wrong: a text element genuinely built at the wrong width would then pass
+silently. Trading a false positive for a false negative is the worse trade —
+the same argument that settled T-02 and T-28.
+
+**Everything done to the page before measuring is reported.** Hiding an overlay
+and promoting an image both change the numbers, so both appear as run notes.
+The note that earns its place is the one about the overlay that hid *nothing*:
+that is how an author finds out the consent vendor renamed a class and every
+offset moved 64px without the config changing.
+
 **The UI hides the config format.** The first version exposed it directly — a
 JSON textarea, a free-text "section (figmaId)" box — and it was unusable by
 anyone who did not already know the data model. Worse, the section and the
@@ -236,37 +299,35 @@ adding a control that takes a raw config value as free text is a regression.
 
 ## What to do next
 
-Most of the triage backlog is closed. What is left is short, and the first item
-is not code.
+The triage backlog and the hardening backlog are both closed. What is left is
+short, and neither of the first two items is code.
 
-**1. Take the letter-spacing defect to whoever owns the theme.** It is the first
+**1. Re-run triage 001 and diff it.** Four noise classes are gone and three
+environmental risks are handled; **nobody has confirmed the 35 findings
+actually drop to the predicted ~19.** The reports are byte-identical between
+runs, so this is a real check rather than a formality. Do it before trusting a
+single number in this file or in `PROGRESS.md` — everything above is arithmetic
+until it is a measurement.
+
+**2. Take the letter-spacing defect to whoever owns the theme.** It is the first
 genuine defect TOVI has found: all three headings are missing their negative
 tracking, design `−0.48 / −0.32 / −0.4`px against a live `0`. The design applies
 −1% to headings and the build applies none. Consistent, unambiguous, cheap.
 Worth confirming the tool's output survives contact with the person who has to
 act on it — that is the last untested link in the chain.
 
-**2. T-27 — warn when a text node's box is not a layout box.** The one noise
-class still standing, and the largest single contributor to triage 001 (part of
-8 findings). A `textAutoResize: WIDTH_AND_HEIGHT` node hugs its glyphs, so its
-box is not the layout box anyone means to compare. `textAutoResize` is already
-in the API response, so this is an authoring guard, not a comparison change.
-
-**3. T-31 — write down the pairing traps in `docs/tagging.md`.** Two of the four
-noise classes were mistakes the tool let an author make in silence. The 526px
-gap and the `backgroundColor` finding were one bad pairing between them.
-
-**4. Re-run triage 001 and diff it.** Three noise classes are gone; nobody has
-confirmed the 35 findings actually drop to the predicted ~19 + T-27's share. The
-reports are byte-identical between runs, so this is a real check, not a
-formality. Do it before trusting the numbers above.
+**3. P-03 — which "Men's Basketball" frame is authoritative?** See below. This
+decides what a run is even comparing against and outranks everything that is
+left. It is not a guard the tool can supply; it is a question for whoever owns
+the design file.
 
 ### Then the rest of the board
 
-- **P-03 — which "Men's Basketball" frame is authoritative?** See below. This
-  decides what a run is even comparing against and outranks everything here.
 - **T-25** — click a live element to pair it with a layer. T-32 resolves
-  selectors automatically now, so this is the remaining half of the loop.
+  selectors automatically now, and the layer list marks the rows worth thinking
+  twice about, so this is the remaining half of the loop.
+- **T-18** — flip `fail_on_drift` on in CI. It ships report-only. The four noise
+  classes are closed, so the only thing standing in the way is item 1 above.
 - **T-21/T-22/T-23** — the AI suggestion layer. Advisory only, never the
   verdict; see invariant 7 in [AGENTS.md](AGENTS.md).
 

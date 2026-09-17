@@ -355,3 +355,59 @@ guessed at.
 This narrows nothing else: a node whose style is `Bold` still resolves to 700
 and still fails against a live `600`. That is the finding the mapping must not
 hide, and a test pins it.
+
+
+## Measurement advisories
+
+Three `info`-severity findings that never fail a run and never change one. Each
+states a fact about how one side was **authored or measured** that changes what
+the deltas on the same element mean.
+
+They exist because triage 001 had to rediscover every one of them by hand.
+Sixteen of its thirty-five findings were explained by facts the tool already
+knew and did not say, and a finding the reader has to re-derive is a finding
+that gets ignored.
+
+| Property | Says |
+| --- | --- |
+| `boxShape` | The Figma TEXT node shrink-wraps to its glyphs (`textAutoResize`), so its box is the ink and not the column the text was laid out in |
+| `zeroSize` | The live element occupies no space, with the cause in `detail` — images still loading, or a hidden or unsized element |
+| `positioning` | The live element is `fixed` or `sticky`, so its rect is anchored to the viewport and was measured at scroll 0 |
+
+```
+info  heading  boxShape.textAutoResize
+        expected textAutoResize: WIDTH_AND_HEIGHT — the design box hugs the
+                 glyphs, width and height are not laid out
+        actual   width, height, offsetX and offsetY below compare a glyph hug
+                 against a laid-out element
+error heading  width   expected 742px  actual 1470px  delta +728
+```
+
+**Nothing is suppressed.** The `width` error above still stands, because a text
+element genuinely built at the wrong width has to keep failing — trading a false
+positive for a false negative is the worse trade. The advisory sits beside the
+finding and says which kind it is likely to be; the judgement stays with the
+reader.
+
+Each advisory is recorded as a `Check` too, so it appears in the record of what
+the run looked at rather than only in the findings list.
+
+## Run notes
+
+Some facts belong to the whole run rather than to any element. Everything the
+extractor changed about the page before measuring it is reported at the top of
+the report, the JSON and the terminal summary:
+
+```
+TOVI FAIL  https://example.com/  (1728x1080)
+  note    overlay ".cookie-banner" hid 1 element before measuring
+  note    overlay "#promo-bar" matched nothing — it hid no part of the page
+  note    11 lazy-loaded images switched to eager, so they had a size to measure
+```
+
+Two of these change what every number below them means, and the third — the
+overlay that matched nothing — is the one that tells you a config has quietly
+stopped doing its job. Notes are emitted in a fixed order (overlays in config
+order, then images), so two runs over an unchanged page stay byte-identical.
+
+See [configuration.md](configuration.md#overlays).
