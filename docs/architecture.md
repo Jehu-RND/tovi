@@ -25,21 +25,24 @@ Shared domain types live in [src/types.ts](../src/types.ts); report types in
 
 | Path | LOC | Responsibility |
 | --- | --- | --- |
-| [index.ts](../src/index.ts) | 271 | CLI (commander), `runCheck()` wiring, `compareAll()` |
-| [types.ts](../src/types.ts) | 183 | Shared domain types — the contract between stages |
-| [config/schema.ts](../src/config/schema.ts) | 111 | Config types and `DEFAULT_TOLERANCES` |
-| [config/loadConfig.ts](../src/config/loadConfig.ts) | 275 | Strict validation; every error names its path |
-| [figma/client.ts](../src/figma/client.ts) | 206 | REST client: auth, chunking, retries, typed errors |
-| [figma/normalize.ts](../src/figma/normalize.ts) | 289 | `RawFigmaNode -> FigmaSpec`; owns every Figma quirk |
-| [live/extract.ts](../src/live/extract.ts) | 392 | Playwright extraction; owns every browser quirk |
+| [index.ts](../src/index.ts) | 532 | CLI (commander), `executeRun()`, `runCheck()`, `compareAll()` |
+| [types.ts](../src/types.ts) | 234 | Shared domain types — the contract between stages |
+| [config/schema.ts](../src/config/schema.ts) | 142 | Config types, `DEFAULT_TOLERANCES`, font aliases |
+| [config/loadConfig.ts](../src/config/loadConfig.ts) | 318 | Strict validation; every error names its path |
+| [figma/client.ts](../src/figma/client.ts) | 250 | REST client: auth, chunking, retries, typed errors |
+| [figma/normalize.ts](../src/figma/normalize.ts) | 414 | `RawFigmaNode -> FigmaSpec`; owns every Figma quirk |
+| [figma/layers.ts](../src/figma/layers.ts) | 192 | Layer discovery: flatten the tree, select pages by word tokens |
+| [live/extract.ts](../src/live/extract.ts) | 464 | Playwright extraction; owns every browser quirk |
+| [live/probe.ts](../src/live/probe.ts) | 194 | Selector probe — an authoring aid, never in the comparison path |
 | [compare/color.ts](../src/compare/color.ts) | 133 | Color normalization and CIEDE2000 distance |
-| [compare/issues.ts](../src/compare/issues.ts) | 118 | Shared `Issue` construction, rounding, formatting |
-| [compare/textPass.ts](../src/compare/textPass.ts) | 138 | Pass B — five text properties |
-| [compare/geometryPass.ts](../src/compare/geometryPass.ts) | 315 | Pass A — section-relative normalization |
-| [report/merge.ts](../src/report/merge.ts) | 162 | Grouping, counters, deterministic ordering |
-| [report/html.ts](../src/report/html.ts) | 246 | Self-contained HTML + text summary |
-| [ui/server.ts](../src/ui/server.ts) | 240 | Local UI server; loopback only, token stays server-side |
-| [ui/page.ts](../src/ui/page.ts) | 400 | The UI's single page, as a string (tsc copies no assets) |
+| [compare/issues.ts](../src/compare/issues.ts) | 179 | Shared `Issue` construction, rounding, formatting |
+| [compare/textPass.ts](../src/compare/textPass.ts) | 211 | Pass B — five text properties |
+| [compare/geometryPass.ts](../src/compare/geometryPass.ts) | 442 | Pass A — section-relative normalization |
+| [report/merge.ts](../src/report/merge.ts) | 194 | Grouping, counters, deterministic ordering |
+| [report/types.ts](../src/report/types.ts) | 154 | `Issue`, `ElementReport`, `RunReport` |
+| [report/html.ts](../src/report/html.ts) | 342 | Self-contained HTML + text summary |
+| [ui/server.ts](../src/ui/server.ts) | 373 | Local UI server; loopback only, token stays server-side |
+| [ui/page.ts](../src/ui/page.ts) | 1195 | The UI's single page, as a string (tsc copies no assets) |
 
 ## The stage contracts
 
@@ -185,7 +188,7 @@ missing node into a reportable issue.
 
 ## Tests
 
-100 tests across 8 files, one per module boundary.
+181 tests across 11 files, one per module boundary.
 
 | File | Covers |
 | --- | --- |
@@ -197,9 +200,13 @@ missing node into a reportable issue.
 | `geometryPass.test.ts` | Pass A, including the coordinate-space guard |
 | `compareAll.test.ts` | Comparison wiring without network or browser |
 | `html.test.ts` | Escaping, swatch safety, rendering |
+| `layers.test.ts` | Layer flattening, page selection by word tokens |
+| `uiServer.test.ts` | UI routing, config validation, the token boundary |
+| `probe.integration.test.ts` | **Real Chromium** — selector matching and candidates |
 
-The integration suite **skips itself** when Chromium has not been downloaded, so
-a green run without `npx playwright install chromium` covers less than it looks.
+Both integration suites **skip themselves** when Chromium has not been
+downloaded, so a green run without `npx playwright install chromium` covers
+less than it looks.
 
 `compareAll()` is exported from `index.ts` specifically so tests can exercise
 the full comparison wiring by passing specs and styles in directly — no network,

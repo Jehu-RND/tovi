@@ -2,7 +2,7 @@
 
 Three statuses only: **Todo** · **In Progress** · **Done**.
 
-_Last updated: 2026-09-14_
+_Last updated: 2026-09-17_
 
 | Status | Count |
 | --- | --- |
@@ -205,7 +205,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 
 | ID | Task |
 | --- | --- |
-| D-16 | 100 tests across 8 suites, one per module boundary |
+| D-16 | 100 tests across 8 suites, one per module boundary (181 across 11 today) |
 | D-17 | Verified against the **real Figma REST API** — fills, text metrics, padding, and the TEXT-vs-frame fill distinction all confirmed on live data |
 | D-18 | Verified against **real Chromium** — percentage border-radius, computed `box-shadow` parsing, NaN survival across the Playwright bridge |
 | D-19 | **Full pipeline validated** — real Figma nodes vs a local fixture with three planted defects. All three caught, plus a missing element, with zero false positives |
@@ -242,7 +242,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 
 ## Notes
 
-**Test count is now 140** across 9 suites, up from 100. `npm test` still passes
+**Test count is now 181** across 11 suites, up from 100. `npm test` still passes
 without Chromium because the integration suite skips itself — install it before
 trusting a green run.
 

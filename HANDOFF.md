@@ -1,6 +1,7 @@
 # Handoff
 
-_Written 2026-09-14. Updated the same day, after the first triage. On `main`._
+_Written 2026-09-14. Updated 2026-09-17, after the triage and the work it set off.
+On `main`, working tree clean._
 
 Read this first if you are picking TOVI up. It covers where the project actually
 stands, what changed recently and why, and what to do next. It does not repeat
@@ -12,14 +13,23 @@ full task list), or [docs/](docs/) (the reference).
 ## Where this stands in one paragraph
 
 TOVI compares a Figma design against a live page and reports where the build
-drifted. The engine is finished, covered by 162 tests, has been **run end to
+drifted. The engine is finished, covered by 181 tests, has been **run end to
 end against the real target**, and — as of
 [docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md) — has
 been **triaged finding by finding**. The verdict: the findings are trustworthy.
-The section container passed clean; of 35 findings **19 are genuine** and the
-other 16 fall into four classes of noise, none of them a miscomparison. What is
-left is not a question any more, it is work: four scoped tasks that remove those
-four classes, none of which requires weakening a check.
+The section container passed clean; of 35 findings **19 were genuine** and the
+other 16 fell into four classes of noise, none of them a miscomparison.
+
+Since that triage, **three of those four classes have been removed at the
+source** — T-28 (`fontWeight` from the style name), T-29 (no box border on a
+TEXT node), T-30 (declared font aliases). None of them widened a tolerance. The
+fourth, the box-shape class, is T-27 and is the one still standing.
+
+Separately, T-32 closed the authoring trap that made a first run look broken:
+the UI no longer pre-fills a `data-figma-id` selector the page does not have.
+
+What remains: **T-27**, one documentation task (**T-31**), and the first genuine
+defect the tool found, which is waiting on whoever owns the theme.
 
 ---
 
@@ -46,7 +56,7 @@ This distinction matters more than the test count.
 
 | | Verified against |
 | --- | --- |
-| Comparison engine, both passes | 162 unit tests |
+| Comparison engine, both passes | 181 unit tests |
 | Browser extraction | Real Chromium, `tests/fixtures/page.html` |
 | Figma normalization | The real API, real nodes |
 | Full pipeline | **The real site and real design file** |
@@ -111,10 +121,12 @@ one and says why, but the CLI will accept it and fail at run time.
 
 **2. The live site carries no `data-figma-id` attributes.**
 
-The UI still pre-fills that selector form, so a first run against a freshly
-picked layer fails with `missingInLive` and looks like a broken tool. It is not
-— nothing was compared, because nothing was found. Replace the pre-filled
-selector with a real one (T-32 removes the trap).
+This used to be a trap: the UI pre-filled a `data-figma-id` selector, so a first
+run against a freshly picked layer failed with `missingInLive` and looked like a
+broken tool. **T-32 fixed that** — picking a layer now resolves its selector
+against the page itself, trying the attribute, then a class, then an id named
+after the layer, and leaves the field empty rather than guessing when none of
+them match.
 
 Pairing is by CSS selector instead. That is fully supported and is how the runs
 above worked. The theme is unusually selector-friendly:
@@ -140,15 +152,27 @@ measures 1440×151 at a 1440 viewport and 1500×151 at 1728.
 
 ## What changed recently
 
-**The triage session (latest).** No source changed — the deliverable is
-[docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md), plus
-the board and docs catching up to it: P-02 closed, T-01/T-02/T-06 answered and
-struck, T-27–T-31 added, and `PROGRESS.md` moved from ~65% to ~80%. The stale
-"borders are not compared at all" line in
-[`/triage`](.claude/commands/triage.md) was corrected and the three gaps the
-triage found were added to it.
+**Acting on the triage (latest).** Nine commits. Three of the four noise
+classes removed at the source, the authoring trap that caused a fourth closed,
+and the results view rebuilt around the questions the triage found it could not
+answer. Test count 162 → 181.
 
-**The session before it.** Six commits, 49 files, +3493/−103.
+| Commit | What |
+| --- | --- |
+| `305f2bf` | **T-32.** Picking a layer resolves its selector against the page — attribute, then class, then id — instead of pre-filling a `data-figma-id` guess |
+| `c54ab34` | Picking a frame adds its subtree, not just the frame |
+| `a4c845e` | A passing element says what was verified, not just that it passed |
+| `d38d354` | Progress while a run happens, instead of ten silent seconds |
+| `b5dbb2c` | **T-28, T-29, T-30.** Three classes of false positive deleted. None widened a tolerance |
+| `15b920c` | Findings name the element they are about (`section.more-content · 342×122`); results filter by all / passed / failed / errors / warnings |
+| `124c8d3` | The layer list greys every picked row, drawn from state rather than patched at the click |
+
+**The triage session.** No source changed — the deliverable is
+[docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md), plus
+the board and docs catching up: P-02 closed, T-01/T-02/T-06 answered and struck,
+T-27–T-31 added, and `PROGRESS.md` moved from ~65% to ~80%.
+
+**The session before that.** Six commits, 49 files, +3493/−103.
 
 | Commit | What |
 | --- | --- |
@@ -180,6 +204,26 @@ normal` has no honest number to compare against, but silence was
 indistinguishable from a pass — which is the one thing this tool must never do.
 It now emits an `info`-severity skip naming the property and why.
 
+**`fontWeight` resolves from the style name, not Figma's number.** Figma
+reports the font's own weight-axis value, which for a variable font is not a CSS
+weight — Gotham Medium comes back as `350` against a correct `500`. The same
+node also says `fontStyle: "Medium"`, and the design stated it in words. A
+closed CSS Fonts Level 4 table maps the name; anything outside it falls back to
+Figma's number rather than being guessed at. **Do not "simplify" this by raising
+the tolerance** — a node whose style is "Bold" still resolves to 700 and still
+fails against a live 600, and a test pins that. Trading a false positive for a
+false negative is the worse trade.
+
+**A stroke on a TEXT node is not a CSS border.** It is a glyph outline —
+`-webkit-text-stroke` — while `border` draws a rectangle around the text. Widths
+are no longer compared there, but the stroke is still reported as `info` naming
+what it actually is, because invariant 3 means removing a comparison must not
+become silence.
+
+**Font aliases are declared, never inferred.** `Gotham` and `"Hco Gotham"` are
+the same typeface under a foundry-prefixed name. The config takes an explicit
+`fontAliases` map. It is not fuzzy matching and must not become it — invariant 7.
+
 **The UI hides the config format.** The first version exposed it directly — a
 JSON textarea, a free-text "section (figmaId)" box — and it was unusable by
 anyone who did not already know the data model. Worse, the section and the
@@ -192,39 +236,37 @@ adding a control that takes a raw config value as free text is a regression.
 
 ## What to do next
 
-The triage is done, so the board is worth working on now. In order:
+Most of the triage backlog is closed. What is left is short, and the first item
+is not code.
 
-**1. Remove the four noise classes — T-27 to T-30.** Each has a written verdict
-in the triage doc and none requires weakening a check.
+**1. Take the letter-spacing defect to whoever owns the theme.** It is the first
+genuine defect TOVI has found: all three headings are missing their negative
+tracking, design `−0.48 / −0.32 / −0.4`px against a live `0`. The design applies
+−1% to headings and the build applies none. Consistent, unambiguous, cheap.
+Worth confirming the tool's output survives contact with the person who has to
+act on it — that is the last untested link in the chain.
 
-- **T-27** — warn when a text node's box is not a layout box. Biggest single
-  win: part of the 8-finding box-shape class. `textAutoResize` is already in
-  the API response, so
-  this is an authoring guard, not a comparison change.
-- **T-28** — prefer `fontStyle` over the raw numeric `fontWeight`. A fixed
-  CSS weight-name table (Thin 100 … Black 900), not fuzzy matching, so it stays
-  inside invariant 7. **Do not fix this by raising the tolerance** — that would
-  hide the genuine Bold-700-vs-600 finding on another node.
-- **T-29** — stop comparing box borders on a TEXT node. Downgrade to `info`
-  **with a reason**; invariant 3 means it must not become silence.
-- **T-30** — declared font-family aliases. `Gotham` vs `"Hco Gotham"` is the
-  same typeface under a foundry-prefixed name, and it fires on every text
-  element on every run. Must be an explicit user-declared map, never a fuzzy
-  match.
+**2. T-27 — warn when a text node's box is not a layout box.** The one noise
+class still standing, and the largest single contributor to triage 001 (part of
+8 findings). A `textAutoResize: WIDTH_AND_HEIGHT` node hugs its glyphs, so its
+box is not the layout box anyone means to compare. `textAutoResize` is already
+in the API response, so this is an authoring guard, not a comparison change.
 
-**2. Write down the pairing traps — T-31.** Two of the four noise classes are
-mistakes the tool lets an author make in silence.
+**3. T-31 — write down the pairing traps in `docs/tagging.md`.** Two of the four
+noise classes were mistakes the tool let an author make in silence. The 526px
+gap and the `backgroundColor` finding were one bad pairing between them.
 
-**3. Take the letter-spacing defect to whoever owns the theme.** It is the first
-genuine defect TOVI has found. Worth confirming the tool's output survives
-contact with the person who has to act on it.
+**4. Re-run triage 001 and diff it.** Three noise classes are gone; nobody has
+confirmed the 35 findings actually drop to the predicted ~19 + T-27's share. The
+reports are byte-identical between runs, so this is a real check, not a
+formality. Do it before trusting the numbers above.
 
 ### Then the rest of the board
 
-- **T-25** — click a live element to pair it with a layer. The probe already
-  proposes candidates; this closes the loop. Worth more after the triage than
-  before, since authoring is now the weak spot.
-- **T-09 follow-on** — the 8293-layer file makes layer discovery the bottleneck.
+- **P-03 — which "Men's Basketball" frame is authoritative?** See below. This
+  decides what a run is even comparing against and outranks everything here.
+- **T-25** — click a live element to pair it with a layer. T-32 resolves
+  selectors automatically now, so this is the remaining half of the loop.
 - **T-21/T-22/T-23** — the AI suggestion layer. Advisory only, never the
   verdict; see invariant 7 in [AGENTS.md](AGENTS.md).
 

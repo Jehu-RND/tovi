@@ -33,7 +33,7 @@ npx playwright install chromium     # required for the integration suite
 
 npm run build                       # tsc -> dist/
 npm run typecheck                   # tsc --noEmit over src + tests
-npm test                            # vitest run — 100 tests
+npm test                            # vitest run — 181 tests
 npm run test:watch
 
 npm run check -- --config tovi.config.json --report out/report.html
@@ -200,7 +200,8 @@ assertion that the live value must be zero.
 
 ## Testing
 
-100 tests, one suite per module boundary. Extend the existing suites rather than
+181 tests across 11 suites, one per module boundary. Extend the existing suites
+rather than
 adding parallel ones.
 
 `compareAll()` is exported from [src/index.ts](src/index.ts) specifically so

@@ -24,7 +24,7 @@ Audit the documentation against what the code actually does, then fix the drift.
 5. **Module LOC and the module table** in `docs/architecture.md` and
    `PROGRESS.md` — `wc -l src/**/*.ts`.
 
-6. **Test count.** Run `npm test`. The docs claim 100 tests across 8 files in
+6. **Test count.** Run `npm test`. The docs claim 181 tests across 11 files in
    `README.md`, `PROGRESS.md`, and `docs/architecture.md`.
 
 7. **Known gaps.** The lists in `README.md`, `PROGRESS.md`, and

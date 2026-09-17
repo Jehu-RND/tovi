@@ -1,7 +1,7 @@
 # TOVI — Progress
 
 **Status: ~80% to MVP.**
-_Last updated: 2026-09-14_
+_Last updated: 2026-09-17_
 
 > Task-level breakdown lives in [TASKS.md](TASKS.md) — 56 tasks across todo,
 > in progress, and done. This file carries the reasoning; that one carries the list.
@@ -58,7 +58,7 @@ noise classes are authoring mistakes the tool lets you make silently.
 
 ## Built and verified
 
-**162 tests passing**, including two integration suites that run against real
+**181 tests passing**, including two integration suites that run against real
 Chromium.
 
 | Module | LOC | State |
