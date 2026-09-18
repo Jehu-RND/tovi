@@ -146,6 +146,118 @@ would be compared across unrelated coordinate spaces. See
 Give the section `"passes": ["geometry"]`; a container has no type spec of its
 own to check.
 
+## Pairing traps
+
+A pairing is a claim: *this design node and this live element are the same
+thing.* TOVI takes the claim at face value and measures. It cannot tell a wrong
+pairing from a wrong build, so a bad pairing does not fail — it produces
+findings that are arithmetically correct and mean nothing.
+
+Sixteen of the thirty-five findings in
+[triage 001](triage-001-mens-basketball.md) came from four causes, and two of
+them were pairings. This section is the list of the ones that have actually
+happened, so the next person can recognise them before spending an afternoon on
+them.
+
+### A Figma URL carries two node ids, and both look right
+
+```
+…?node-id=11609-7477&focus-id=11350-4869
+          ↑ CANVAS, the page   ↑ FRAME, the design
+          no bounding box       1728×6537, what you want
+```
+
+In the file this tool was built against, **both are named "Men's Basketball"**.
+A CANVAS has no `absoluteBoundingBox`, so it cannot be measured and the
+normalizer throws on it. The UI refuses to add one and says why; the CLI will
+accept it and fail at run time.
+
+`tovi layers` shows the type and the size of every row. A row with no size is a
+row you cannot compare.
+
+### The container that is not the page
+
+The most expensive finding in triage 001 was `height design 6537 live 6011` —
+a 526px gap that looked like an entire missing section. It was a pairing.
+
+`.wrap` is the content container. The Figma frame draws the whole page: a 72px
+`#main-header` sits above `.wrap` and a 325px `footer.content-info` below it,
+and the frame includes both. Measured against `document.scrollHeight` the gap
+is **104px**, not 526.
+
+The same bad pairing produced a `backgroundColor` finding, because `.wrap` has
+no background and the frame does. One mistake, two frightening findings.
+
+**Before pairing a container, ask what the design node actually encloses.** If
+the frame draws the header, the live counterpart has to be something that
+contains the header too.
+
+### Screenshots of the live site, pasted into the design
+
+The real design file has two of them — `Screenshot 2026-01-22…` at 1728×105 at
+the top of the frame and `Screenshot 2026-01-08…` at 1738×354 in the footer
+group. They are ordinary layers with ordinary node ids and they list exactly
+like anything else.
+
+They are designer scaffolding, not specification. Pairing against one compares
+the build against a picture of the build. **Never pair a layer whose name
+begins with `Screenshot`.**
+
+### A text layer whose box is its glyphs
+
+A Figma TEXT node with `textAutoResize: WIDTH_AND_HEIGHT` shrink-wraps to the
+words it contains, so its box is the ink and not the column the text was laid
+out in. Paired against a block-level element that spans its container, the
+width delta is arithmetic on the difference and the `offsetX` delta is half of
+it — `(1470 − 742) / 2 = 364`, exactly what triage 001 reported.
+
+`tovi layers` marks these rows **`hugs text`**, and the UI's layer list says
+`· hugs text`. A run reports it as an `info`-severity `boxShape` finding
+alongside the deltas it explains.
+
+Neither suppresses the comparison, because a text element genuinely built at
+the wrong width has to keep failing. The fix is in the design file — give the
+node a fixed size — or in the pairing: pair the live element against the frame
+that holds the text, not against the text.
+
+### A design column against a full-bleed element
+
+A 1604px-wide design column paired against an element that spans the full
+1728px viewport reports `offsetX −62` on every element in it:
+`(1728 − 1604) / 2 = 62`. The build is centred and correct; the two things
+being compared are different boxes.
+
+### A selector that matches twenty-five things
+
+```
+.level-of-play           1 match
+.superior-customization  1 match
+.wrap                    1 match
+.mega-menu-item          25 matches  ← ambiguous, never usable
+```
+
+A selector matching more than one element is reported as `ambiguousInLive` and
+nothing is measured. Use **Test selectors** in the UI: it costs one page load
+and no Figma call.
+
+### Page furniture the design does not draw
+
+Cookie banners, promo strips and chat bubbles are added by something other than
+the build. One *outside* the section container costs nothing — the section and
+everything in it move down together, and section-relative normalization cancels
+it exactly. One *inside* the section shifts every element below it by its own
+height, and nothing cancels that.
+
+Declare them and they are hidden before anything is measured:
+
+```json
+{ "overlays": [".cookie-banner", "#promo-bar"] }
+```
+
+The run reports how many elements each selector hid, **including the ones that
+hid nothing** — which is how you find out the vendor renamed the class. See
+[configuration.md](configuration.md#overlays).
+
 ## When you cannot add an attribute
 
 Sometimes the element you want is inside markup you do not control — a plugin's

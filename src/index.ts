@@ -16,12 +16,13 @@ import { flattenLayers, pageNames, renderLayers } from './figma/layers.js';
 import { fileExists, startUiServer } from './ui/server.js';
 import { normalizeFigmaNode } from './figma/normalize.js';
 import { extractLiveStyles } from './live/extract.js';
+import type { ImageResult, OverlayResult } from './live/extract.js';
 import { diffText } from './compare/textPass.js';
 import { diffGeometry } from './compare/geometryPass.js';
 import { structuralIssue, valueIssue } from './compare/issues.js';
 import { buildRunReport } from './report/merge.js';
 import { renderHtmlReport, renderTextSummary } from './report/html.js';
-import type { Check, Issue, RunReport } from './report/types.js';
+import type { Check, Issue, RunNote, RunReport } from './report/types.js';
 import type { ElementPair, FigmaSpec, LiveStyles, SectionContext } from './types.js';
 
 /**
@@ -339,6 +340,7 @@ export async function executeRun(
     figmaIds: config.elements.map((element) => element.figmaId),
     selectors,
     ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
+    ...(config.overlays !== undefined ? { overlays: config.overlays } : {}),
     ...(options.screenshotPath !== undefined ? { screenshotPath: options.screenshotPath } : {}),
   });
 
@@ -356,7 +358,9 @@ export async function executeRun(
     ),
   ];
 
-  const runReport = buildRunReport(config, issues, timestamp, checks, extraction.styles);
+  const runReport = buildRunReport(
+    config, issues, timestamp, checks, extraction.styles, runNotes(extraction),
+  );
   report({ phase: 'report', fraction: 1, done: total, total,
     message: `${checks.length} propert${checks.length === 1 ? 'y' : 'ies'} compared.` });
 
@@ -366,6 +370,57 @@ export async function executeRun(
       ? { screenshotPath: extraction.screenshotPath }
       : {}),
   };
+}
+
+/**
+ * Turn what the extractor did to the page into notes the report can carry.
+ *
+ * Everything that changed the page before it was measured is stated, including
+ * the changes that changed nothing. An overlay selector that hid zero elements
+ * is the most useful note in the list: it is how an author finds out that the
+ * banner they thought they were removing is still sitting in the layout, or
+ * that the vendor renamed the class three months ago.
+ *
+ * Ordering is fixed — overlays in config order, then images — so two runs over
+ * an unchanged page produce byte-identical notes (invariant 4).
+ */
+export function runNotes(extraction: {
+  overlays: OverlayResult[];
+  images: ImageResult;
+}): RunNote[] {
+  const notes: RunNote[] = [];
+
+  for (const overlay of extraction.overlays) {
+    if (overlay.invalid === true) {
+      notes.push({
+        kind: 'overlay',
+        message: `overlay "${overlay.selector}" is not a selector the browser can parse; nothing was hidden`,
+      });
+      continue;
+    }
+    notes.push({
+      kind: 'overlay',
+      message: overlay.hidden === 0
+        ? `overlay "${overlay.selector}" matched nothing — it hid no part of the page`
+        : `overlay "${overlay.selector}" hid ${overlay.hidden} element${overlay.hidden === 1 ? '' : 's'} before measuring`,
+    });
+  }
+
+  const { promoted, pending } = extraction.images;
+  if (promoted > 0) {
+    notes.push({
+      kind: 'lazyImages',
+      message: `${promoted} lazy-loaded image${promoted === 1 ? '' : 's'} switched to eager, so they had a size to measure`,
+    });
+  }
+  if (pending > 0) {
+    notes.push({
+      kind: 'pendingImages',
+      message: `${pending} image${pending === 1 ? '' : 's'} had still not loaded when the page was measured; any box relying on one is short`,
+    });
+  }
+
+  return notes;
 }
 
 export interface LayersOptions {

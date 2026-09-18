@@ -63,6 +63,11 @@ export interface RawFigmaNode {
   paddingBottom?: number;
   paddingLeft?: number;
   characters?: string;
+  /**
+   * TEXT nodes: the TypeStyle block. Carries the font metrics AND
+   * `textAutoResize` — which the Plugin API puts on the node, but the REST API
+   * puts here. See extractTextAutoResize() in normalize.ts.
+   */
   style?: Record<string, unknown>;
   children?: RawFigmaNode[];
   [key: string]: unknown;

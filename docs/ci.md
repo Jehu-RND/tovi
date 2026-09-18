@@ -9,6 +9,7 @@ meaningful.
 | Requirement | Why |
 | --- | --- |
 | Node 20.12+ | `process.loadEnvFile` |
+| A committed `package-lock.json` | `npm ci` installs exactly what it pins, and `cache: npm` fails outright without it |
 | `FIGMA_TOKEN` as a secret | Never commit it; never put it in the config |
 | Chromium | `npx playwright install --with-deps chromium` |
 | A reachable URL | The live or staging page to inspect |
@@ -52,13 +53,17 @@ jobs:
   tovi:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
+      # npm ci, not npm install: it installs exactly what package-lock.json
+      # pins, so CI tests the dependency tree you tested. It also requires the
+      # lockfile to be committed -- as does `cache: npm` above, which fails
+      # outright without one.
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build

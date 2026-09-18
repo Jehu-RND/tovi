@@ -78,22 +78,37 @@ section** — if it pushes the section itself, both the section and its children
 move together and the offsets stay correct.
 
 It does *not* absorb a banner **inside** the section, which pushes the children
-but not the section origin. Dismiss the banner, or exclude it, or point `section`
-at a container below it.
+but not the section origin. Declare it and it is hidden before anything is
+measured:
+
+```json
+{ "overlays": [".cookie-banner", "#promo-bar"] }
+```
+
+The run then says what each selector hid, and — the line worth reading — which
+of them hid nothing. See [configuration.md](configuration.md#overlays).
 
 ### An image measures `0×0`
 
-Lazy loading. The image has no intrinsic height until it is scrolled into view,
-and **the extractor deliberately never scrolls** — scrolling would corrupt the
-shared coordinate origin that Pass A depends on. See
+An image with no intrinsic size contributes nothing to layout until its bytes
+arrive, and **the extractor deliberately never scrolls** — scrolling would
+corrupt the shared coordinate origin that Pass A depends on. See
 [comparison.md](comparison.md#why-a-single-pageevaluate).
 
-Options, best first:
+Lazy loading is handled for you: every `<img loading="lazy">` is switched to
+`eager` before measuring and the run waits up to five seconds for the images.
+The run reports how many it promoted. So if a box still measures `0×0`, lazy
+loading is not the reason. The `zeroSize` advisory on that element says which
+of the remaining causes it is:
 
-1. Set explicit `width`/`height` or an `aspect-ratio` on the image, which is
-   good practice anyway — it prevents layout shift for real users too.
-2. Add `loading="eager"` to above-the-fold images.
-3. Exclude the element from the config.
+| Advisory `detail` | Cause |
+| --- | --- |
+| `N images here had not finished loading` | The image did not arrive inside the five-second budget. A slow origin, or a URL that 404s slowly |
+| `display:none, an empty inline, …` | The element is hidden, is an empty inline, or is a replaced element with no intrinsic size and no CSS size |
+
+Setting explicit `width`/`height` or an `aspect-ratio` on the image fixes the
+second case and is good practice anyway — it prevents layout shift for real
+users too.
 
 ### Every heading fails on `fontWeight`
 
@@ -120,11 +135,24 @@ that is a config problem, not per-element drift.
 Set `viewport.width` to the frame width, or compare against a frame drawn at the
 viewport you actually want to validate.
 
-### A sticky header measures the wrong height
+### A sticky or fixed element's offset looks wrong
 
-Measurements are taken at scroll position 0, which is the right choice for
-determinism. A header that shrinks on scroll is measured in its expanded state.
-Compare it against the Figma frame's expanded state.
+Measurements are taken at scroll position 0 and nowhere else, which is the right
+choice for determinism — it is the one scroll position that is the same on every
+run. Two consequences:
+
+- **A header that shrinks on scroll is measured expanded.** Compare it against
+  the Figma frame's expanded state. In the file this tool was built against,
+  `#main-header` measured 72px at scroll 0 and matched the design's nav instance
+  exactly, so this is a risk rather than an observed problem.
+- **A `fixed` or `sticky` element's rect is anchored to the viewport**, not to
+  the document, so its section-relative offset holds at the top of the page and
+  nowhere else.
+
+TOVI reports the second case as an `info`-severity `positioning` finding naming
+the computed position. It is worse when the **section container** is the sticky
+one — every offset in the run is then measured against a rect that slides — and
+the advisory says so explicitly when that happens.
 
 ### `line-height` shows as skipped
 
@@ -219,6 +247,20 @@ Fix whatever is wrong with the section element itself — usually it is
 `missingInLive`, and you will see that issue too. This issue exists so a
 comparison that did not run never looks like one that passed.
 
+### `boxShape` (info severity)
+
+The Figma node is a TEXT layer with `textAutoResize: WIDTH_AND_HEIGHT` or
+`HEIGHT`, so its box is shrink-wrapped to the glyphs rather than laid out. The
+`width`, `height`, `offsetX` and `offsetY` findings on that element are
+comparing a glyph hug against a laid-out element and are arithmetic on the
+difference.
+
+Nothing is suppressed — a text element genuinely built at the wrong width still
+has to fail. Fix it in the design file by giving the node a fixed size, or in
+the config by pairing the live element against the frame that holds the text.
+`tovi layers` marks these rows `hugs text` before you pick one. See
+[tagging.md](tagging.md#pairing-traps).
+
 ## Runs and environment
 
 ### Playwright cannot find Chromium
@@ -233,8 +275,10 @@ when the browser is absent. A green test run is not proof the browser side works
 ### Two runs give different numbers
 
 Determinism is enforced by pinning the viewport, zeroing animations and
-transitions, waiting for fonts and network, and never scrolling. If results
-still wobble, the page itself is nondeterministic — A/B tests, rotating hero
+transitions, waiting for fonts, and never scrolling. If results still wobble,
+check the notes at the top of the report first — an overlay that hid one element
+on one run and none on the next, or images still pending when the budget ran
+out, will move numbers. Otherwise the page itself is nondeterministic — A/B tests, rotating hero
 content, randomized ordering, or a carousel that autoplays despite
 `animation-duration: 0s`.
 

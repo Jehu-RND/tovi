@@ -24,7 +24,7 @@ Severity is **derived, not judged**:
 | --- | --- | --- |
 | `error` | A measured delta exceeded its tolerance, or an element is missing/ambiguous | yes |
 | `warning` | Advisory — copy drift, a missing optional property | no |
-| `info` | Context — most notably a `skipped` comparison | no |
+| `info` | Context — a `skipped` comparison, or a measurement advisory | no |
 
 ## Which element a finding is about
 
@@ -107,6 +107,9 @@ the structural issues have no meaningful arithmetic to show.
 | `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `letterSpacing` | text | — |
 | `textContent` | text | — (always a warning) |
 | `missingInFigma`, `missingInLive`, `ambiguousInLive`, `skipped` | structural | varies |
+| `boxShape` | geometry | `textAutoResize` |
+| `zeroSize` | geometry | the cause — pending images, or a hidden/unsized element |
+| `positioning` | geometry | whether the element is the section container |
 
 ### Structural issues
 
@@ -122,6 +125,35 @@ rest of that element's comparison.
 
 TOVI never picks one element out of an ambiguous match. Guessing would attribute
 a delta to an element you did not mean and send you editing the wrong rule.
+
+### Measurement advisories
+
+Three more `info` findings, which are not structural: the comparison ran
+normally and every delta stands. Each says something about how one side was
+authored or measured that changes what those deltas mean — a Figma text box
+shrink-wrapped to its glyphs, a live element that occupies no space, a rect
+anchored to the viewport rather than the document.
+
+They never fail a run and never suppress a finding. Full descriptions in
+[comparison.md](comparison.md#measurement-advisories).
+
+### Run notes
+
+`RunReport.notes` carries what the extractor did to the page before measuring
+it — overlays hidden, lazy images promoted, images that never arrived. They
+belong to the run rather than to any element, and they are omitted entirely when
+there are none, so a run that prepared nothing produces the report it always did.
+
+```jsonc
+"notes": [
+  { "kind": "overlay", "message": "overlay \".cookie-banner\" hid 1 element before measuring" },
+  { "kind": "overlay", "message": "overlay \"#promo-bar\" matched nothing — it hid no part of the page" },
+  { "kind": "lazyImages", "message": "11 lazy-loaded images switched to eager, so they had a size to measure" }
+]
+```
+
+`kind` is a closed union — `overlay`, `lazyImages`, `pendingImages` — so a
+consumer can group them without matching on prose.
 
 ## The `RunReport`
 
@@ -176,6 +208,7 @@ over time.
 - Elements follow **config order**.
 - Issues within an element follow severity, then a fixed property order, then
   `detail`.
+- Notes follow a fixed order: overlays in config order, then the image notes.
 
 If you add a new `IssueProperty`, add it to `PROPERTY_ORDER` in
 [report/merge.ts](../src/report/merge.ts) or it sorts last and its position
@@ -221,6 +254,7 @@ line per issue, and closes with the counters:
 
 ```
 TOVI FAIL  https://example.com/  (1440x900)
+  note    overlay ".cookie-banner" hid 1 element before measuring
   error   hero-cta  width  expected 180px  actual 200px  delta +20
   error   hero-heading  fontSize  expected 48px  actual 44px  delta -4
   error   hero-card  padding.left  expected 32px  actual 24px  delta -8
@@ -230,8 +264,9 @@ TOVI FAIL  https://example.com/  (1440x900)
   json:   out/report.json
 ```
 
-Elements with no issues are omitted entirely — a passing element produces no
-lines, only its contribution to the counters. The `report:` and `json:` lines
+Run notes come first, above the findings, because every number below them was
+measured on the page they describe. Elements with no issues are omitted entirely
+— a passing element produces no lines, only its contribution to the counters. The `report:` and `json:` lines
 appear only when those flags were passed.
 
 ## Consuming the JSON

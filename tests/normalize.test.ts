@@ -305,3 +305,72 @@ describe('font weight resolves from the style name', () => {
       .toBe(450);
   });
 });
+
+/**
+ * `textAutoResize` — T-27.
+ *
+ * Read so the report can say when a TEXT node's box is its glyphs rather than
+ * a layout box. Nothing downstream compares it; it only ever explains.
+ *
+ * The fixtures below use the shape the REST API actually returns, which is not
+ * the shape the Plugin API returns. The first version of this suite invented
+ * the Plugin API's shape, passed, and shipped an advisory that could never fire
+ * on a real file — a run against the real Figma file is what caught it. Every
+ * `style` block here is copied from a real node in that file.
+ */
+describe('normalizeFigmaNode — textAutoResize', () => {
+  /** A real TEXT node's style block: "SELECT YOUR LEVEL OF PLAY", 12576:8122. */
+  function textNode(autoResize?: string): RawFigmaNode {
+    return node({
+      type: 'TEXT',
+      characters: 'Select your level of play',
+      style: {
+        fontFamily: 'Gotham',
+        fontStyle: 'Bold',
+        fontWeight: 700,
+        fontSize: 48,
+        letterSpacing: -0.48,
+        lineHeightPx: 60,
+        ...(autoResize !== undefined ? { textAutoResize: autoResize } : {}),
+      },
+    });
+  }
+
+  it('carries a shrink-wrapped TEXT node through to the spec', () => {
+    expect(normalizeFigmaNode(textNode('WIDTH_AND_HEIGHT'), 'heading').textAutoResize)
+      .toBe('WIDTH_AND_HEIGHT');
+  });
+
+  it('carries the height-only form, which hugs one axis', () => {
+    expect(normalizeFigmaNode(textNode('HEIGHT'), 'heading').textAutoResize).toBe('HEIGHT');
+  });
+
+  it('reads it from style, not from the node', () => {
+    // The regression. On the node is where the Plugin API puts it, and reading
+    // there finds undefined on every TEXT node the REST API returns — a silent
+    // no-op that looks exactly like a design with no shrink-wrapped text in it.
+    const wrongPlace = node({
+      type: 'TEXT',
+      characters: 'Select your level of play',
+      style: { fontFamily: 'Gotham', fontSize: 48 },
+      textAutoResize: 'WIDTH_AND_HEIGHT',
+    });
+    expect(normalizeFigmaNode(wrongPlace, 'heading').textAutoResize).toBeUndefined();
+  });
+
+  it('ignores it on a node that is not TEXT', () => {
+    // A FRAME's box is always laid out, so one stray field must not produce an
+    // advisory about a node the advisory is not true of.
+    const frame = node({ style: { textAutoResize: 'WIDTH_AND_HEIGHT' } });
+    expect(normalizeFigmaNode(frame, 'hero').textAutoResize).toBeUndefined();
+  });
+
+  it('drops a value outside the four Figma documents', () => {
+    expect(normalizeFigmaNode(textNode('SOMETHING_NEW'), 'heading').textAutoResize)
+      .toBeUndefined();
+  });
+
+  it('leaves it absent when Figma did not report it at all', () => {
+    expect(normalizeFigmaNode(textNode(), 'heading').textAutoResize).toBeUndefined();
+  });
+});

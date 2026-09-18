@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TOVI real-site hardening fixture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; }
+
+  /* A promo strip INSIDE the section. Section-relative normalization cannot
+     absorb this one: it pushes everything below it down by its own height,
+     so every offset in the section is wrong by 64px until it is hidden. */
+  .promo-bar { height: 64px; background: #b91c1c; }
+
+  /* A cookie banner pinned to the viewport. Hiding it changes no offsets,
+     which is exactly why a run has to say whether it hid anything. */
+  .cookie-banner {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 90px; background: #111;
+  }
+
+  .site-header { position: sticky; top: 0; height: 72px; background: #1f2937; }
+
+  .hero { position: relative; background: rgb(245, 245, 245); }
+
+  .hero__heading {
+    margin: 80px 0 0 120px;
+    font-size: 40px; font-weight: 700; line-height: 48px;
+  }
+
+  /* Deliberately tall, so the lazy image below sits far outside the viewport. */
+  .filler { height: 10000px; }
+
+  /* No width or height declared, so the box is whatever the image's intrinsic
+     size turns out to be — 0x0 until the bytes arrive. */
+  .hero__media { display: block; margin-left: 120px; }
+</style>
+</head>
+<body>
+<div data-figma-id="hero" class="hero">
+  <div class="promo-bar">Free shipping this week</div>
+  <header data-figma-id="site-header" class="site-header"></header>
+  <h1 data-figma-id="hero-heading" class="hero__heading">Built for every player</h1>
+  <div class="filler"></div>
+  <img data-figma-id="hero-media" class="hero__media" src="swatch.png" loading="lazy" alt="">
+</div>
+<div class="cookie-banner"></div>
+</body>
+</html>

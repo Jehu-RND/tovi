@@ -33,7 +33,7 @@ npx playwright install chromium     # required for the integration suite
 
 npm run build                       # tsc -> dist/
 npm run typecheck                   # tsc --noEmit over src + tests
-npm test                            # vitest run — 181 tests
+npm test                            # vitest run — 247 tests
 npm run test:watch
 
 npm run check -- --config tovi.config.json --report out/report.html
@@ -78,8 +78,15 @@ Measuring one at a time reads each against a different scroll origin, and the
 section subtraction only cancels scroll out if both rects were measured at the
 same scroll position.
 
-The extractor also never scrolls. The known cost — lazy-loaded images measuring
-`0×0` — is documented and accepted.
+The extractor also never scrolls. The cost that used to carry — lazy-loaded
+images measuring `0×0` — is paid a different way: every `<img loading="lazy">`
+is switched to `eager` before measuring, and the run says how many. Scrolling
+to an image is still forbidden; making the image load where it stands is not
+the same thing.
+
+Anything else the extractor changes about the page before measuring it —
+a declared overlay hidden, an image promoted — is reported as a run note. A page
+quietly altered is a page whose numbers cannot be trusted.
 
 ### 3. An absent check must never look like a passing check
 
@@ -87,6 +94,12 @@ This is the worst output the tool can produce. When a comparison cannot run, say
 so: emit an `info`-severity `skipped` issue naming what was unavailable. Never
 silently return an empty issue list, and never fall back to a less correct
 comparison to avoid reporting a skip.
+
+The same rule governs everything the run knows and could keep to itself. An
+overlay selector that hid nothing, an image that never loaded, a design box
+shrink-wrapped to its glyphs — each changes what a number means, and each is
+reported. A measurement advisory never suppresses the finding it explains:
+trading a false positive for a false negative is the worse trade.
 
 ### 4. Output must be byte-identical between runs
 
@@ -97,6 +110,23 @@ exists.
 If you add an `IssueProperty`, add it to `PROPERTY_ORDER` in
 [src/report/merge.ts](src/report/merge.ts) — an unlisted property sorts last and
 becomes insertion-dependent.
+
+**The one place the page itself can differ between runs, and what is done about
+it.** Images are waited on for a fixed 5s budget after lazy loading is switched
+off. An image that lands at 4.9s on one run and 5.1s on the next changes that
+element's measured box, so the output is not byte-identical — the page was not
+in the same state twice.
+
+That is a trade made deliberately, and it is the better half of it: before, a
+deferred image was *reliably* measured at `0×0`, which is deterministic and
+wrong. Reproducing a wrong number is not the property this invariant is for.
+
+What the invariant still demands, and what the code does: **the difference is
+never silent.** The run reports how many images were still pending, and the
+affected element gets a `zeroSize` advisory naming the cause. A diff that moves
+therefore always comes with the line explaining why. Do not widen the budget to
+make a flaky page settle, and do not remove the pending count to make two
+reports match.
 
 ### 5. The Figma token comes from `FIGMA_TOKEN` only
 
@@ -200,7 +230,7 @@ assertion that the live value must be zero.
 
 ## Testing
 
-181 tests across 11 suites, one per module boundary. Extend the existing suites
+247 tests across 12 suites, one per module boundary. Extend the existing suites
 rather than
 adding parallel ones.
 
@@ -258,13 +288,12 @@ is how `$comment` works); only tolerance blocks reject unknown keys.
 - **Do not raise default tolerances** without a measured justification. The
   defaults are calibrated: `color: 2` sits between a deltaE of 0.34 (invisible)
   and 3.49 (visible); `fontWeight: 0` is exact because weight normally is.
-- **Known gaps are documented, not hidden.** Borders, real gradients,
+- **Known gaps are documented, not hidden.** Real gradients,
   `line-height: normal`, and per-run text styling are listed in
   [PROGRESS.md](PROGRESS.md) and [docs/comparison.md](docs/comparison.md). Do not
   silently paper over one; do not remove a gap from the list without closing it.
-- **PROGRESS.md is honest about status** — including that the tool has never been
-  run against a real production page. Keep it that way. If you change what is
-  built, update it.
+- **PROGRESS.md is honest about status.** Keep it that way. If you change what
+  is built, update it — including about what has not been done.
 - Never commit `.env`, `tovi.config.json` (it may contain client URLs), or
   anything under `out/`.
 

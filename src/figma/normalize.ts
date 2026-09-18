@@ -15,6 +15,7 @@ import type {
   Rgba,
   Shadow,
   StrokeAlign,
+  TextAutoResize,
   TextSpec,
 } from '../types.js';
 import { fromFigmaColor } from '../compare/color.js';
@@ -202,6 +203,30 @@ export function extractBorders(node: RawFigmaNode): Borders | undefined {
 
   const anyDrawn = SIDES.some((side) => borders[side].width > 0);
   return anyDrawn ? borders : undefined;
+}
+
+/**
+ * Read how a TEXT node sizes its own box.
+ *
+ * IT LIVES IN `style`, NOT ON THE NODE. The Figma *Plugin* API exposes
+ * `node.textAutoResize`, and every example written against it does the same —
+ * but the REST API this tool uses puts it inside the node's `style` block,
+ * alongside `fontFamily` and `letterSpacing`. Reading the node level finds
+ * `undefined` on every TEXT node in a real file, which is a silent no-op: the
+ * advisory simply never fires and nothing says why. That is what happened, and
+ * only a run against the real file caught it.
+ *
+ * An unrecognised value returns undefined rather than a guess. The only thing
+ * this drives is an advisory, and an advisory that states something untrue
+ * about the design file is worse than no advisory at all.
+ */
+export function extractTextAutoResize(node: RawFigmaNode): TextAutoResize | undefined {
+  if (!isRecord(node.style)) return undefined;
+  const raw = str(node.style, 'textAutoResize');
+  if (raw === 'NONE' || raw === 'HEIGHT' || raw === 'WIDTH_AND_HEIGHT' || raw === 'TRUNCATE') {
+    return raw;
+  }
+  return undefined;
 }
 
 /** Normalize Figma's stroke alignment, defaulting to its own default. */
@@ -394,6 +419,7 @@ export function normalizeFigmaNode(node: RawFigmaNode, figmaId: string): FigmaSp
   const shadows = extractShadows(node.effects);
   const text = isText ? extractTextSpec(node.style) : undefined;
   const characters = isText ? node.characters : undefined;
+  const textAutoResize = isText ? extractTextAutoResize(node) : undefined;
 
   return {
     figmaId,
@@ -410,5 +436,6 @@ export function normalizeFigmaNode(node: RawFigmaNode, figmaId: string): FigmaSp
     ...(shadows.length > 0 ? { shadows } : {}),
     ...(text !== undefined ? { text } : {}),
     ...(characters !== undefined ? { characters } : {}),
+    ...(textAutoResize !== undefined ? { textAutoResize } : {}),
   };
 }

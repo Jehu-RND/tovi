@@ -11,6 +11,7 @@ import { diffGeometry, toRelativeOffset } from '../src/compare/geometryPass.js';
 import { DEFAULT_TOLERANCES } from '../src/config/schema.js';
 import type { Tolerances } from '../src/config/schema.js';
 import type { ElementPair, SectionContext, Shadow } from '../src/types.js';
+import type { Check } from '../src/report/types.js';
 
 const tolerances: Tolerances = DEFAULT_TOLERANCES;
 
@@ -365,5 +366,175 @@ describe('a stroke on a TEXT node is not a CSS border', () => {
       (i) => i.property === 'border' && i.severity === 'error',
     );
     expect(widthErrors).toHaveLength(4);
+  });
+});
+
+/**
+ * Measurement advisories — T-27, T-04, T-05.
+ *
+ * Three facts the tool knew and used to keep to itself. Every test here checks
+ * the same two things: that the advisory is emitted, and that it changes
+ * nothing — no error, no suppressed finding, no altered delta. An advisory
+ * that moves a verdict is not an advisory, it is a weakened check.
+ */
+describe('diffGeometry — measurement advisories', () => {
+  /** A TEXT node 728px narrower than the element it is paired against. */
+  function textPair(autoResize?: 'NONE' | 'HEIGHT' | 'WIDTH_AND_HEIGHT'): ElementPair {
+    const pair = alignedPair();
+    pair.figma = {
+      ...pair.figma!,
+      type: 'TEXT',
+      absoluteBoundingBox: { x: 4120, y: 2480, width: 742, height: 48 },
+      ...(autoResize !== undefined ? { textAutoResize: autoResize } : {}),
+    };
+    pair.live = { ...pair.live!, boundingRect: { x: 120, y: 176, width: 1470, height: 48 } };
+    return pair;
+  }
+
+  it('says when a TEXT node hugs its glyphs on both axes', () => {
+    const issues = diffGeometry(textPair('WIDTH_AND_HEIGHT'), section, tolerances);
+    const advisory = issues.find((issue) => issue.property === 'boxShape');
+    expect(advisory?.severity).toBe('info');
+    expect(advisory?.detail).toBe('textAutoResize');
+    expect(advisory?.expected).toContain('WIDTH_AND_HEIGHT');
+  });
+
+  it('names only the height axis when only the height hugs', () => {
+    const issues = diffGeometry(textPair('HEIGHT'), section, tolerances);
+    const advisory = issues.find((issue) => issue.property === 'boxShape');
+    expect(advisory?.expected).toContain('HEIGHT');
+    expect(advisory?.actual).toBe('height and offsetY below compare a glyph hug against a laid-out element');
+  });
+
+  it('agrees with itself grammatically on both axes and one', () => {
+    // "height are not laid out" shipped to a real report before this test.
+    expect(diffGeometry(textPair('HEIGHT'), section, tolerances)
+      .find((issue) => issue.property === 'boxShape')?.expected)
+      .toContain('height is not laid out');
+    expect(diffGeometry(textPair('WIDTH_AND_HEIGHT'), section, tolerances)
+      .find((issue) => issue.property === 'boxShape')?.expected)
+      .toContain('width and height are not laid out');
+  });
+
+  it('says nothing for a TEXT node whose box was laid out', () => {
+    const issues = diffGeometry(textPair('NONE'), section, tolerances);
+    expect(issues.some((issue) => issue.property === 'boxShape')).toBe(false);
+  });
+
+  it('says nothing when Figma did not report textAutoResize', () => {
+    const issues = diffGeometry(textPair(), section, tolerances);
+    expect(issues.some((issue) => issue.property === 'boxShape')).toBe(false);
+  });
+
+  it('still reports the width delta it is explaining', () => {
+    // The advisory exists to explain this finding, never to replace it. A
+    // text element genuinely built 728px too wide must still fail.
+    const issues = diffGeometry(textPair('WIDTH_AND_HEIGHT'), section, tolerances);
+    const width = issues.find((issue) => issue.property === 'width');
+    expect(width?.severity).toBe('error');
+    expect(width?.delta).toBe(728);
+  });
+
+  it('adds no error-severity issue of its own', () => {
+    const issues = diffGeometry(textPair('WIDTH_AND_HEIGHT'), section, tolerances);
+    const advisories = issues.filter(
+      (issue) => issue.property === 'boxShape' || issue.property === 'zeroSize' ||
+        issue.property === 'positioning',
+    );
+    expect(advisories.every((issue) => issue.severity === 'info')).toBe(true);
+  });
+
+  it('says when the live element occupies no space, and blames the images', () => {
+    const pair = alignedPair();
+    pair.live = {
+      ...pair.live!,
+      boundingRect: { x: 120, y: 176, width: 180, height: 0 },
+      pendingImages: 2,
+    };
+    const advisory = diffGeometry(pair, section, tolerances)
+      .find((issue) => issue.property === 'zeroSize');
+    expect(advisory?.severity).toBe('info');
+    expect(advisory?.actual).toContain('180×0');
+    expect(advisory?.detail).toBe('2 images here had not finished loading');
+  });
+
+  it('still reports the height error the zero size produced', () => {
+    // The tempting "fix" is to skip the size diff when the live rect is 0x0.
+    // That would turn an element the build never rendered into a silent pass,
+    // which is the one outcome invariant 3 forbids.
+    const pair = alignedPair();
+    pair.live = {
+      ...pair.live!,
+      boundingRect: { x: 120, y: 176, width: 180, height: 0 },
+      pendingImages: 2,
+    };
+    const height = diffGeometry(pair, section, tolerances)
+      .find((issue) => issue.property === 'height');
+    expect(height?.severity).toBe('error');
+    expect(height?.delta).toBe(-48);
+  });
+
+  it('offers the other causes when no image is pending', () => {
+    const pair = alignedPair();
+    pair.live = { ...pair.live!, boundingRect: { x: 120, y: 176, width: 0, height: 0 } };
+    const advisory = diffGeometry(pair, section, tolerances)
+      .find((issue) => issue.property === 'zeroSize');
+    expect(advisory?.detail).toContain('display:none');
+  });
+
+  it('says nothing about size for an element that occupies space', () => {
+    const issues = diffGeometry(alignedPair(), section, tolerances);
+    expect(issues.some((issue) => issue.property === 'zeroSize')).toBe(false);
+  });
+
+  it('says when a rect is anchored to the viewport rather than the document', () => {
+    const pair = alignedPair();
+    pair.live = { ...pair.live!, position: 'sticky' };
+    const advisory = diffGeometry(pair, section, tolerances)
+      .find((issue) => issue.property === 'positioning');
+    expect(advisory?.severity).toBe('info');
+    expect(advisory?.actual).toContain('position: sticky');
+    expect(advisory?.detail).toBe('its offset holds at the top of the page and nowhere else');
+  });
+
+  it('says so more loudly when the sticky element is the section itself', () => {
+    const pair = alignedPair();
+    pair.figmaId = 'hero';
+    pair.figma = { ...pair.figma!, figmaId: 'hero' };
+    pair.live = { ...pair.live!, figmaId: 'hero', position: 'fixed' };
+    const advisory = diffGeometry(pair, section, tolerances)
+      .find((issue) => issue.property === 'positioning');
+    expect(advisory?.detail).toContain('every offset in the run rests on it');
+  });
+
+  it('still reports the offset error on a sticky element', () => {
+    // Same trap as above, one property over: "an offset on a sticky element is
+    // meaningless, so skip it" would hide a header built 40px too low.
+    const pair = alignedPair();
+    pair.live = {
+      ...pair.live!,
+      position: 'sticky',
+      boundingRect: { x: 120, y: 216, width: 180, height: 48 },
+    };
+    const issues = diffGeometry(pair, section, tolerances);
+    expect(issues.find((issue) => issue.property === 'offsetY')?.delta).toBe(40);
+    expect(issues.some((issue) => issue.property === 'positioning')).toBe(true);
+  });
+
+  it('says nothing for an ordinary statically positioned element', () => {
+    const pair = alignedPair();
+    pair.live = { ...pair.live!, position: 'static' };
+    expect(
+      diffGeometry(pair, section, tolerances).some((issue) => issue.property === 'positioning'),
+    ).toBe(false);
+  });
+
+  it('records each advisory as a check, so nothing it says is invisible', () => {
+    const pair = textPair('WIDTH_AND_HEIGHT');
+    pair.live = { ...pair.live!, position: 'sticky' };
+    const checks: Check[] = [];
+    diffGeometry(pair, section, tolerances, checks);
+    expect(checks.filter((check) => check.property === 'boxShape')).toHaveLength(1);
+    expect(checks.filter((check) => check.property === 'positioning')).toHaveLength(1);
   });
 });

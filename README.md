@@ -172,9 +172,10 @@ Your Figma frame width should match the configured `viewport.width`.
 Feature-complete for a first run: every module is implemented, and the full
 pipeline has been exercised end to end against a real Figma file.
 
-`npm test` runs 181 tests. Two integration suites drive real Chromium against
-[tests/fixtures/page.html](tests/fixtures/page.html) and skips itself if the
-browser is not downloaded.
+`npm test` runs 247 tests. Two integration suites drive real Chromium against
+[tests/fixtures/page.html](tests/fixtures/page.html) and
+[tests/fixtures/hardening.html](tests/fixtures/hardening.html), and skip
+themselves if the browser is not downloaded.
 
 ### Known gaps
 
@@ -185,6 +186,10 @@ browser is not downloaded.
   colour is compared as that colour; a real gradient is skipped.
 - **Text is compared per element, not per text run.** A paragraph with mixed
   styling is compared against the Figma node's dominant style.
+- **Page furniture must be declared, not detected.** A cookie banner or promo
+  bar is hidden before measuring only if the config names it in `overlays`.
+  Guessing which parts of a page are "not the design" is the kind of heuristic
+  this tool keeps out of a run.
 
 ### Environment
 

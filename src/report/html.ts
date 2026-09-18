@@ -10,7 +10,7 @@
  * as this renderer is concerned.
  */
 
-import type { Check, ElementReport, Issue, RunReport } from './types.js';
+import type { Check, ElementReport, Issue, RunNote, RunReport } from './types.js';
 
 export interface RenderOptions {
   /** Where the screenshot was written. Shown when it cannot be embedded. */
@@ -153,6 +153,24 @@ export function renderElementSection(element: ElementReport): string {
     </section>`;
 }
 
+/**
+ * Render the run-level notes.
+ *
+ * Placed above the elements, because every number below them was measured on a
+ * page these notes describe. A reader who meets "overlay .promo-bar hid 1
+ * element" after forty offset deltas has already drawn their conclusions.
+ */
+export function renderNotes(notes: RunNote[]): string {
+  if (notes.length === 0) return '';
+  return `  <section class="notes">
+    <h2>Before measuring</h2>
+    <ul>${notes.map((note) => `
+      <li><span class="muted">${escapeHtml(note.kind)}</span> ${escapeHtml(note.message)}</li>`).join('')}
+    </ul>
+  </section>
+`;
+}
+
 const STYLES = `
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -200,6 +218,16 @@ const STYLES = `
     display: inline-block; width: 11px; height: 11px; border-radius: 3px;
     border: 1px solid rgba(0,0,0,.25); margin-right: 6px; vertical-align: -1px;
   }
+  .notes {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .notes h2 {
+    margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: #6b7280; font-weight: 600;
+  }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { font-size: 12.5px; margin-bottom: 3px; }
   .verdict { font-size: 13px; font-weight: 600; }
   .verdict.fail { color: #dc2626; }
   .verdict.pass { color: #16a34a; }
@@ -217,7 +245,7 @@ const STYLES = `
   }
   @media (prefers-color-scheme: dark) {
     body { background: #0f1115; color: #e6e8ec; }
-    .summary, .element, .capture { background: #161a21; border-color: #272c36; }
+    .summary, .element, .capture, .notes { background: #161a21; border-color: #272c36; }
     .capture img { border-color: #272c36; }
     th { border-bottom-color: #272c36; color: #9aa2b1; }
     td { border-bottom-color: #1e232c; }
@@ -281,7 +309,7 @@ export function renderHtmlReport(report: RunReport, options: RenderOptions = {})
       ${screenshotRow}
     </dl>
   </div>
-${elements.map(renderElementSection).join('\n')}
+${renderNotes(report.notes ?? [])}${elements.map(renderElementSection).join('\n')}
 ${captureSection}</div>
 </body>
 </html>
@@ -310,6 +338,12 @@ export function renderCheckRow(check: Check): string {
 export function renderTextSummary(report: RunReport): string {
   const lines: string[] = [];
   lines.push(`TOVI ${report.status.toUpperCase()}  ${report.url}  (${report.viewport.width}x${report.viewport.height})`);
+
+  // Above the findings, for the same reason the HTML report puts them there:
+  // they describe the page every number below was measured on.
+  for (const note of report.notes ?? []) {
+    lines.push(`  note    ${note.message}`);
+  }
 
   let compared = 0;
   for (const element of report.elements) {

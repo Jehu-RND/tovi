@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { compareAll } from '../src/index.js';
+import { compareAll, runNotes } from '../src/index.js';
 import { validateConfig } from '../src/config/loadConfig.js';
 import type { ToviConfig } from '../src/config/schema.js';
 import type { FigmaSpec, LiveStyles } from '../src/types.js';
@@ -165,5 +165,70 @@ describe('compareAll', () => {
     const issues = compareAll(cfg, new Map(), new Map());
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ property: 'missingInFigma' });
+  });
+});
+
+/**
+ * runNotes — what the extractor did to the page, said out loud.
+ *
+ * The zero cases matter most: an overlay selector that hid nothing is how an
+ * author learns the vendor renamed the class, and silence there is how a
+ * config keeps looking correct long after it stopped being so.
+ */
+describe('runNotes', () => {
+  it('says how many elements each overlay hid', () => {
+    const notes = runNotes({
+      overlays: [{ selector: '.promo', hidden: 2 }],
+      images: { promoted: 0, pending: 0 },
+    });
+    expect(notes).toEqual([
+      { kind: 'overlay', message: 'overlay ".promo" hid 2 elements before measuring' },
+    ]);
+  });
+
+  it('says so when an overlay matched nothing, rather than staying quiet', () => {
+    const notes = runNotes({
+      overlays: [{ selector: '.gone', hidden: 0 }],
+      images: { promoted: 0, pending: 0 },
+    });
+    expect(notes[0]?.message).toContain('matched nothing');
+  });
+
+  it('names a selector the browser could not parse', () => {
+    const notes = runNotes({
+      overlays: [{ selector: '.a[', hidden: 0, invalid: true }],
+      images: { promoted: 0, pending: 0 },
+    });
+    expect(notes[0]?.message).toContain('not a selector the browser can parse');
+  });
+
+  it('keeps the overlays in config order, so two runs read alike', () => {
+    const notes = runNotes({
+      overlays: [{ selector: '.a', hidden: 1 }, { selector: '.b', hidden: 1 }],
+      images: { promoted: 0, pending: 0 },
+    });
+    expect(notes[0]?.message).toContain('".a"');
+    expect(notes[1]?.message).toContain('".b"');
+  });
+
+  it('counts in the singular when exactly one thing happened', () => {
+    const notes = runNotes({
+      overlays: [{ selector: '.promo', hidden: 1 }],
+      images: { promoted: 1, pending: 0 },
+    });
+    expect(notes[0]?.message).toContain('hid 1 element before');
+    expect(notes[1]?.message).toContain('1 lazy-loaded image switched');
+  });
+
+  it('reports lazy images only when some were promoted', () => {
+    expect(runNotes({ overlays: [], images: { promoted: 0, pending: 0 } })).toEqual([]);
+    expect(runNotes({ overlays: [], images: { promoted: 1, pending: 0 } })[0]?.kind)
+      .toBe('lazyImages');
+  });
+
+  it('reports images that never arrived, because a box relying on one is short', () => {
+    const notes = runNotes({ overlays: [], images: { promoted: 4, pending: 1 } });
+    expect(notes.map((note) => note.kind)).toEqual(['lazyImages', 'pendingImages']);
+    expect(notes[1]?.message).toContain('1 image had still not loaded');
   });
 });

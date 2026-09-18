@@ -100,3 +100,39 @@ describe('loadConfig', () => {
     await expect(loadConfig('does-not-exist.json')).rejects.toThrow(/Cannot read config file/);
   });
 });
+
+/**
+ * `overlays` — T-03.
+ *
+ * Declared page furniture, hidden before anything is measured. Validated here
+ * rather than at measure time: a run that hides nothing because of a stray
+ * bracket reports offsets that look exactly like design drift.
+ */
+describe('validateConfig — overlays', () => {
+  it('keeps the declared selectors in the order they were written', () => {
+    const config = validateConfig(baseConfig({ overlays: ['#promo-bar', '.cookie-banner'] }));
+    expect(config.overlays).toEqual(['#promo-bar', '.cookie-banner']);
+  });
+
+  it('trims surrounding whitespace, which a pasted selector carries', () => {
+    expect(validateConfig(baseConfig({ overlays: ['  .promo  '] })).overlays).toEqual(['.promo']);
+  });
+
+  it('leaves the key absent when none are declared', () => {
+    expect(validateConfig(baseConfig()).overlays).toBeUndefined();
+  });
+
+  it('rejects a bare string, which would iterate as characters', () => {
+    expect(() => validateConfig(baseConfig({ overlays: '.promo' }))).toThrow(/must be an array/);
+  });
+
+  it('rejects an empty entry, which would match the whole document or nothing', () => {
+    expect(() => validateConfig(baseConfig({ overlays: ['.promo', '  '] })))
+      .toThrow(/overlays\[1\]/);
+  });
+
+  it('rejects a duplicate, since one of the two is not doing what it looks like', () => {
+    expect(() => validateConfig(baseConfig({ overlays: ['.promo', '.promo'] })))
+      .toThrow(/Duplicate overlay/);
+  });
+});

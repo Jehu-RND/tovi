@@ -45,6 +45,28 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  */
 const SETTLE_MS = 500;
 
+/**
+ * How long to wait for images once lazy loading has been switched off.
+ *
+ * Bounded on purpose. An image that never arrives must not hang a run, and the
+ * run says how many were still pending rather than waiting forever for a
+ * tracking pixel that was never going to load.
+ */
+const IMAGE_BUDGET_MS = 5_000;
+/*
+ * A note on invariant 4, because this constant is where it bends.
+ *
+ * An image that lands at 4.9s on one run and 5.1s on the next changes that
+ * element's measured box, so two runs of the same page can differ. That is a
+ * deliberate trade and it is the better half of it: before, a deferred image
+ * was RELIABLY measured at 0x0 — deterministic, and wrong. Reproducing a wrong
+ * number is not what byte-identical output is for.
+ *
+ * What does not bend: the difference is never silent. The pending count comes
+ * back in ImageResult, the run reports it, and the affected element gets a
+ * zeroSize advisory. Do not widen this to make a flaky page settle.
+ */
+
 /** Neutralises anything that could change between two runs of the same page. */
 const DETERMINISM_CSS = `
   *, *::before, *::after {
@@ -68,6 +90,12 @@ export interface ExtractOptions {
   timeout?: number;
   /** Optional path to write a full-page screenshot for the report. */
   screenshotPath?: string;
+  /**
+   * CSS selectors for page furniture to hide before measuring — cookie
+   * banners, promo bars, chat widgets. Declared by the config, never guessed
+   * at here. See ToviConfig.overlays.
+   */
+  overlays?: string[];
 }
 
 export interface ExtractResult {
@@ -79,6 +107,27 @@ export interface ExtractResult {
   ambiguous: string[];
   /** Where the screenshot was written, when requested. */
   screenshotPath?: string;
+  /** One entry per declared overlay selector, in config order. */
+  overlays: OverlayResult[];
+  /** What switching lazy loading off did. See promoteLazyImages(). */
+  images: ImageResult;
+}
+
+/** What one declared overlay selector actually hid. */
+export interface OverlayResult {
+  selector: string;
+  /** How many elements it hid. Zero is a finding, not a non-event. */
+  hidden: number;
+  /** Set when the browser could not parse the selector at all. */
+  invalid?: boolean;
+}
+
+/** The outcome of preparing the page's images for measurement. */
+export interface ImageResult {
+  /** `<img loading="lazy">` elements switched to eager. */
+  promoted: number;
+  /** Images still not complete when the budget ran out. */
+  pending: number;
 }
 
 /**
@@ -112,6 +161,10 @@ export interface RawLiveStyles {
    * report handed to someone else is a list of numbers with no address.
    */
   describes: string;
+  /** Computed `position`, so the report can say when a rect is scroll-bound. */
+  position: string;
+  /** Images in this element's subtree that had not finished loading. */
+  pendingImages: number;
 }
 
 /** One element's outcome from the single measurement pass. */
@@ -178,6 +231,19 @@ function measureAll(targets: Array<{ figmaId: string; selector: string }>): RawM
     const rect = element.getBoundingClientRect();
     const cs = window.getComputedStyle(element);
 
+    // Why a box can measure 0x0 or short: an <img> with no intrinsic size
+    // contributes nothing to layout until its bytes arrive. Counting them here
+    // turns "height is 300px out" into "height is 300px out and two images in
+    // this element never loaded", which is a different conversation.
+    var pendingImages = 0;
+    var inner = element.querySelectorAll('img');
+    for (var i = 0; i < inner.length; i += 1) {
+      if (!(inner[i] as HTMLImageElement).complete) pendingImages += 1;
+    }
+    if (element.tagName === 'IMG' && !(element as HTMLImageElement).complete) {
+      pendingImages += 1;
+    }
+
     // tag#id.class, the way it reads in devtools. Three classes is enough to
     // recognise an element and short enough to sit in a table cell.
     var tag = element.tagName.toLowerCase();
@@ -196,6 +262,8 @@ function measureAll(targets: Array<{ figmaId: string; selector: string }>): RawM
       matchCount: 1,
       styles: {
         describes: tag + elementId + classes,
+        position: cs.position,
+        pendingImages: pendingImages,
         boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
         padding: {
           top: toPx(cs.paddingTop, rect.height),
@@ -240,6 +308,73 @@ function measureAll(targets: Array<{ figmaId: string; selector: string }>): RawM
   }
 
   return results;
+}
+/* c8 ignore stop */
+
+/**
+ * Hide the declared overlays, and report exactly what each selector hid.
+ *
+ * `display: none` rather than `visibility: hidden`: a promo bar that is merely
+ * invisible still occupies its strip of layout, and occupying layout is the
+ * whole problem. A selector the browser cannot parse is returned as invalid
+ * instead of throwing — one bad entry must not cost the run its other five.
+ *
+ * Serialized into the browser, so DOM APIs only.
+ */
+/* c8 ignore start -- runs in the browser, not under the Node coverage instrument */
+function hideOverlays(selectors: string[]): OverlayResult[] {
+  const results: OverlayResult[] = [];
+
+  for (const selector of selectors) {
+    let matches: NodeListOf<Element>;
+    try {
+      matches = document.querySelectorAll(selector);
+    } catch {
+      results.push({ selector, hidden: 0, invalid: true });
+      continue;
+    }
+    for (let i = 0; i < matches.length; i += 1) {
+      (matches[i] as HTMLElement).style.setProperty('display', 'none', 'important');
+    }
+    results.push({ selector, hidden: matches.length });
+  }
+
+  return results;
+}
+
+/**
+ * Switch lazy loading off, so below-the-fold images have a size to measure.
+ *
+ * The extractor never scrolls — invariant 2 — so a `loading="lazy"` image
+ * below the fold is never fetched and measures 0x0. Its box then reads as a
+ * build defect the size of the whole image, and every element beneath it is
+ * reported at the wrong offset. Neither is true: the build is fine and the
+ * measurement is what is wrong.
+ *
+ * Setting `loading` to `eager` on an image that has not started loading makes
+ * the browser fetch it immediately, which is the fix the troubleshooting guide
+ * used to ask an author to make in their own markup. It is not a heuristic —
+ * there is nothing to guess about which images to load, the answer is all of
+ * them — and it never touches a comparison, only what is on the page when the
+ * comparison happens.
+ *
+ * @returns How many images were promoted. Waiting for them is the caller's job.
+ */
+function promoteLazyImages(): number {
+  const lazy = document.querySelectorAll('img[loading="lazy"]');
+  for (let i = 0; i < lazy.length; i += 1) {
+    const image = lazy[i] as HTMLImageElement;
+    image.loading = 'eager';
+    // Synchronous decode keeps the image from painting — and therefore from
+    // resizing its box — after the settle interval has already elapsed.
+    image.decoding = 'sync';
+  }
+  return lazy.length;
+}
+
+/** How many images have not finished loading, successfully or otherwise. */
+function pendingImageCount(): number {
+  return Array.from(document.images).filter((image) => !image.complete).length;
 }
 /* c8 ignore stop */
 
@@ -327,6 +462,8 @@ export function normalizeLiveStyles(raw: RawLiveStyles, figmaId: string, selecto
     ...(raw.describes !== undefined && raw.describes !== ''
       ? { describes: raw.describes }
       : {}),
+    ...(raw.position !== undefined ? { position: raw.position } : {}),
+    ...(raw.pendingImages !== undefined ? { pendingImages: raw.pendingImages } : {}),
     boundingRect: raw.boundingRect,
     padding: raw.padding,
     cornerRadius: raw.cornerRadius,
@@ -402,7 +539,29 @@ export async function extractLiveStyles(options: ExtractOptions): Promise<Extrac
     await page.evaluate(() => document.fonts.ready);
     await page.addStyleTag({ content: DETERMINISM_CSS });
 
-    // Let layout settle after the fonts swap in and the CSS above lands.
+    // PAGE PREPARATION — everything that changes layout happens here, before
+    // a single measurement, and every one of these steps is reported. A page
+    // quietly altered is a page whose numbers cannot be trusted.
+    const overlays = options.overlays !== undefined && options.overlays.length > 0
+      ? await page.evaluate(hideOverlays, options.overlays)
+      : [];
+
+    const promoted = await page.evaluate(promoteLazyImages);
+    if (promoted > 0) {
+      // Bounded: an image that never arrives must not hang the run. Whatever
+      // is still pending is counted below and reported rather than waited on.
+      await page
+        .waitForFunction(
+          () => Array.from(document.images).every((image) => image.complete),
+          undefined,
+          { timeout: IMAGE_BUDGET_MS },
+        )
+        .catch(() => undefined);
+    }
+    const pending = await page.evaluate(pendingImageCount);
+
+    // Let layout settle after the fonts swap in, the CSS above lands, and the
+    // overlays and images have finished rearranging the page.
     await page.waitForTimeout(SETTLE_MS);
 
     // One call, one scroll origin. See the note at the top of this file.
@@ -437,6 +596,8 @@ export async function extractLiveStyles(options: ExtractOptions): Promise<Extrac
       styles,
       missing,
       ambiguous,
+      overlays,
+      images: { promoted, pending },
       ...(screenshotPath !== undefined ? { screenshotPath } : {}),
     };
   } finally {

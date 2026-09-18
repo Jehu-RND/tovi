@@ -128,3 +128,118 @@ describe.skipIf(!hasChromium)('extractLiveStyles', () => {
     expect(result.styles.get('hero-heading')?.textContent).toBe('Built for every player');
   });
 });
+
+/**
+ * Real-site hardening — T-03, T-04, T-05, against real Chromium.
+ *
+ * Every one of these was catalogued as a risk before it was ever seen. The
+ * fixture makes each of them happen on purpose, so the behaviour is a
+ * measurement rather than an expectation:
+ *
+ *   - a promo bar INSIDE the section, which section-relative normalization
+ *     cannot absorb, and a cookie banner outside it, which it can;
+ *   - a `loading="lazy"` image 10,000px down, which Chromium genuinely defers
+ *     — the control test below measures it at 0×0 to prove the trap is real
+ *     and not merely described;
+ *   - a `position: sticky` header, measured at scroll 0.
+ */
+const hardeningUrl = pathToFileURL(resolve(here, 'fixtures/hardening.html')).href;
+
+describe.skipIf(!hasChromium)('extractLiveStyles — real-site hardening', () => {
+  const figmaIds = ['hero', 'site-header', 'hero-heading', 'hero-media'];
+  let plain: ExtractResult;
+  let hidden: ExtractResult;
+  /** What a browser that does nothing clever sees, for the lazy-image control. */
+  let unassisted: { width: number; height: number; complete: boolean };
+
+  beforeAll(async () => {
+    plain = await extractLiveStyles({
+      url: hardeningUrl, viewport: { width: 1440, height: 900 }, figmaIds,
+    });
+    hidden = await extractLiveStyles({
+      url: hardeningUrl,
+      viewport: { width: 1440, height: 900 },
+      figmaIds,
+      // The last two are the cases that matter as much as the working one: a
+      // selector that matches nothing, and one the browser cannot parse.
+      overlays: ['.promo-bar', '.cookie-banner', '.was-renamed-last-quarter', '.a[' ],
+    });
+
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(hardeningUrl, { waitUntil: 'load' });
+    await page.waitForTimeout(600);
+    unassisted = await page.evaluate(() => {
+      const image = document.querySelector('.hero__media') as HTMLImageElement;
+      const rect = image.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, complete: image.complete };
+    });
+    await browser.close();
+  }, 90_000);
+
+  it('confirms the lazy image really is deferred, so the rest of this means something', () => {
+    // The control. Without this, every assertion below could be passing
+    // because Chromium loaded the image anyway.
+    expect(unassisted).toEqual({ width: 0, height: 0, complete: false });
+  });
+
+  it('measures the deferred image at its real size, without scrolling', () => {
+    // T-04. Invariant 2 forbids scrolling, so the fix is to stop the deferral
+    // rather than to go and look at the image.
+    const media = plain.styles.get('hero-media');
+    expect(media?.boundingRect.width).toBe(240);
+    expect(media?.boundingRect.height).toBe(160);
+  });
+
+  it('reports what it did to the images, and that none were left pending', () => {
+    expect(plain.images).toEqual({ promoted: 1, pending: 0 });
+    expect(plain.styles.get('hero-media')?.pendingImages).toBe(0);
+  });
+
+  it('shifts every offset in the section when a promo bar inside it is hidden', () => {
+    // T-03. The 64px bar is inside the section, so both sides of the
+    // subtraction move together and normalization cancels nothing.
+    const before = toRelativeOffset(
+      plain.styles.get('hero-heading')!.boundingRect, sectionRectFrom(plain, 'hero'),
+    );
+    const after = toRelativeOffset(
+      hidden.styles.get('hero-heading')!.boundingRect, sectionRectFrom(hidden, 'hero'),
+    );
+    expect(before.y - after.y).toBe(64);
+  });
+
+  it('says how many elements each declared overlay hid', () => {
+    expect(hidden.overlays).toEqual([
+      { selector: '.promo-bar', hidden: 1 },
+      { selector: '.cookie-banner', hidden: 1 },
+      { selector: '.was-renamed-last-quarter', hidden: 0 },
+      { selector: '.a[', hidden: 0, invalid: true },
+    ]);
+  });
+
+  it('lets one unparseable selector cost the run nothing but itself', () => {
+    // The assertion above already shows `.a[` came back invalid. This one is
+    // the actual guarantee: the four elements were still measured and the
+    // promo bar was still hidden, so a typo in entry four does not silently
+    // take entries one to three down with it.
+    expect([...hidden.styles.keys()].sort()).toEqual(
+      ['hero', 'hero-heading', 'hero-media', 'site-header'],
+    );
+  });
+
+  it('hides nothing at all when none are declared', () => {
+    expect(plain.overlays).toEqual([]);
+  });
+
+  it('reads the computed position, so a viewport-anchored rect can be named', () => {
+    // T-05. Measured at scroll 0 and never anywhere else, which is what makes
+    // the number reproducible — and what makes it worth saying out loud.
+    expect(plain.styles.get('site-header')?.position).toBe('sticky');
+    expect(plain.styles.get('hero-heading')?.position).toBe('static');
+  });
+
+  it('measures the sticky header at its resting height at scroll 0', () => {
+    expect(plain.styles.get('site-header')?.boundingRect.height).toBe(72);
+    expect(plain.styles.get('site-header')?.boundingRect.y).toBe(64);
+  });
+});

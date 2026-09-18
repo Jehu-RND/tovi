@@ -228,6 +228,7 @@ export function validateConfig(value: unknown, path?: string): ToviConfig {
   };
 
   const fontAliases = validateFontAliases(value['fontAliases'], path);
+  const overlays = validateOverlays(value['overlays'], path);
 
   // The token is never read from config; only the file key may live here, and
   // the environment can supply it instead.
@@ -243,7 +244,39 @@ export function validateConfig(value: unknown, path?: string): ToviConfig {
     figmaFileKey, url, section, viewport, tolerances, elements,
     ...(timeout !== undefined ? { timeout } : {}),
     ...(fontAliases !== undefined ? { fontAliases } : {}),
+    ...(overlays !== undefined ? { overlays } : {}),
   };
+}
+
+/**
+ * Validate the optional `overlays` list.
+ *
+ * Every entry is a CSS selector, and a selector the browser cannot parse is
+ * rejected here rather than at measure time: a run that hides nothing because
+ * of a stray bracket produces offsets that look like design drift, which is
+ * the expensive kind of wrong. Duplicates are rejected for the same reason a
+ * duplicate figmaId is — one of the two is not doing what its author thinks.
+ */
+function validateOverlays(raw: unknown, path?: string): string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new ConfigError('"overlays" must be an array of CSS selectors', path);
+  }
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  raw.forEach((entry, index) => {
+    if (typeof entry !== 'string' || entry.trim() === '') {
+      throw new ConfigError(`"overlays[${index}]" must be a non-empty CSS selector`, path);
+    }
+    const selector = entry.trim();
+    if (seen.has(selector)) {
+      throw new ConfigError(`Duplicate overlay selector "${selector}"`, path);
+    }
+    seen.add(selector);
+    out.push(selector);
+  });
+  return out;
 }
 
 /**
