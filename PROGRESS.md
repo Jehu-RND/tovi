@@ -1,7 +1,7 @@
 # TOVI — Progress
 
-**Status: ~88% to MVP.**
-_Last updated: 2026-09-17_
+**Status: ~90% to MVP.**
+_Last updated: 2026-09-18_
 
 > Task-level breakdown lives in [TASKS.md](TASKS.md) — 66 tasks across todo,
 > in progress, and done. This file carries the reasoning; that one carries the list.
@@ -32,30 +32,39 @@ The second half of that sentence is the expensive half. A tool that produces
 findings is ~90% built. A tool whose findings you act on without double-checking
 is the actual goal.
 
-As of triage 001 the first half is demonstrated and the second half is close:
-the findings were checked one by one against independently measured values and
-they held. What stops a reader trusting the output today is not accuracy but
-volume — 8 of 35 findings came from one authoring mistake, and they look exactly
-like the 19 real ones.
+As of triage 001 the first half is demonstrated, and as of triage 002 the second
+half is most of the way there: the findings were checked one by one against
+independently measured values, they held, and the noise they were buried in has
+since been removed — 35 findings down to 27, which is the 19 real ones plus the
+8 that come from one authoring mistake. Those 8 still report, because
+suppressing them would hide a text element genuinely built at the wrong width,
+but they now carry a line saying which kind they are. What is left is not
+accuracy and no longer really volume; it is that nobody has yet handed the
+report to the person who has to act on it.
 
 ---
 
-## Where the 88% comes from
+## Where the 90% comes from
 
 | Area | Weight | Done | Contribution |
 | --- | --- | --- | --- |
 | Comparison engine (types, config, passes, report) | 45% | 99% | 45% |
 | Figma + browser I/O | 20% | 100% | 20% |
 | Config authoring ergonomics | 15% | 55% | 8% |
-| Real-site hardening | 20% | 75% | 15% |
-| **Total** | **100%** | | **~88%** |
+| Real-site hardening | 20% | 85% | 17% |
+| **Total** | **100%** | | **~90%** |
 
-Real-site hardening moved 55% → 75%. The four noise classes are gone and the
-three catalogued environmental risks are handled and covered by tests against
-real Chromium. It is not 100% because **nobody has re-run triage 001 and
-diffed it** — the reports are byte-identical between runs, so that is a real
-check rather than a formality, and until it is done the numbers above are a
-prediction.
+Real-site hardening moved 55% → 85%. The four noise classes are gone, the three
+catalogued environmental risks are handled and covered against real Chromium,
+and — the part that was missing last time — **triage 001 has been re-run and the
+findings landed on exactly the predicted number**, 35 → 27
+([docs/triage-002-rerun.md](docs/triage-002-rerun.md)). Determinism is no longer
+a fixture claim either: two runs against the live page produced byte-identical
+JSON.
+
+The remaining 15% is P-03. Every number above is measured against frame
+`11350:4869`, and nobody has established that it is the frame anyone is
+building to.
 
 Figma + browser I/O reached 100%: the extractor now prepares the page as well
 as measuring it, and says what it did.
@@ -69,7 +78,7 @@ in the layer list, and selector resolution from T-32. The visual builder
 
 ## Built and verified
 
-**244 tests passing**, including two integration suites that run against real
+**247 tests passing**, including two integration suites that run against real
 Chromium.
 
 | Module | LOC | State |
@@ -138,7 +147,7 @@ visible). deltaE ignores alpha, so opacity is checked separately.
 
 | Gap | Impact | Est. |
 | --- | --- | --- |
-| **Triage 001 has not been re-run** | Three noise classes were removed at the source and nobody has confirmed the 35 findings drop to the predicted ~19. Cheap, and everything above rests on it. | 1 hour |
+| **Nobody has acted on the 19 genuine defects** | The findings are trustworthy and reproducible. Whether a report survives contact with the person who has to fix the theme is the last untested link in the chain, and it is not a code task. | — |
 | **Single viewport per run** | No responsive checking; mobile needs a second config. | 0.5 day |
 | **Which frame is authoritative is still unguarded** | Selector resolution (T-32) and the `hugs text` marker closed two authoring traps; frame choice (P-03) is not a guard the tool can supply — it is a question for whoever owns the design file. | — |
 
@@ -194,24 +203,26 @@ authoring is now the weakest part of the tool.
 
 ## Next steps, in order
 
-1. **Re-run triage 001 and diff it.** Four noise classes are gone and three
-   environmental risks are handled; nobody has confirmed the 35 findings drop
-   to the predicted ~19. Reports are byte-identical between runs, so this is a
-   real check. Do it before trusting any number in this file.
-2. **Take the findings to whoever owns the theme.** The missing heading
+1. **Take the findings to whoever owns the theme.** The missing heading
    letter-spacing is real, consistent across all three headings, and cheap to
    fix — the first genuine defect TOVI has found. Whether the output survives
    contact with the person who has to act on it is the last untested link.
-3. ~~**Remove the four noise classes.**~~ Done — T-27 through T-30. No
+2. **Settle P-03.** Everything measured so far is against frame `11350:4869`.
+   If the structured frame is current, most of the box-shape class disappears
+   at the source. Not a code task — a question for whoever owns the file.
+3. ~~**Re-run triage 001 and diff it.**~~ Done — 35 → exactly the 27 predicted,
+   and it caught two bugs no unit test could. See
+   [docs/triage-002-rerun.md](docs/triage-002-rerun.md).
+4. ~~**Remove the four noise classes.**~~ Done — T-27 through T-30. No
    tolerance was widened and no comparison was deleted.
-4. ~~**Write down the pairing traps.**~~ Done — seven of them, in
+5. ~~**Write down the pairing traps.**~~ Done — seven of them, in
    [docs/tagging.md](docs/tagging.md#pairing-traps).
-5. ~~**Tag the theme.**~~ Now optional. Selector pairing works, needs no
+6. ~~**Tag the theme.**~~ Now optional. Selector pairing works, needs no
    deploy, and is what triage 001 ran on.
-6. ~~**First real run.**~~ Done and triaged.
-7. ~~**Build the layer-discovery command.**~~ Done — `tovi layers` dumps node
+7. ~~**First real run.**~~ Done and triaged.
+8. ~~**Build the layer-discovery command.**~~ Done — `tovi layers` dumps node
    ids and names, filterable by page, name, type and depth.
-8. ~~**Decide on borders.**~~ Done — Pass A now compares per-side stroke width
+9. ~~**Decide on borders.**~~ Done — Pass A now compares per-side stroke width
    and colour, and flags a non-INSIDE `strokeAlign` as info.
 
 ---

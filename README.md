@@ -172,7 +172,7 @@ Your Figma frame width should match the configured `viewport.width`.
 Feature-complete for a first run: every module is implemented, and the full
 pipeline has been exercised end to end against a real Figma file.
 
-`npm test` runs 244 tests. Two integration suites drive real Chromium against
+`npm test` runs 247 tests. Two integration suites drive real Chromium against
 [tests/fixtures/page.html](tests/fixtures/page.html) and
 [tests/fixtures/hardening.html](tests/fixtures/hardening.html), and skip
 themselves if the browser is not downloaded.

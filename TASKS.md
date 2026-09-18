@@ -2,13 +2,13 @@
 
 Three statuses only: **Todo** · **In Progress** · **Done**.
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-09-18_
 
 | Status | Count |
 | --- | --- |
-| Done | 53 |
+| Done | 55 |
 | In Progress | 2 |
-| Todo | 14 |
+| Todo | 13 |
 
 Narrative status, estimates, and the reasoning behind the remaining work live in
 [PROGRESS.md](PROGRESS.md); [HANDOFF.md](HANDOFF.md) is the read-first summary
@@ -50,7 +50,7 @@ debug, catalogued in [docs/troubleshooting.md](docs/troubleshooting.md).
 | ~~T-04~~ | ~~Handle lazy-loaded images measuring `0×0`~~ | **Done.** Every `<img loading="lazy">` is switched to eager before measuring, with a 5s budget; the run says how many were promoted and how many never arrived. An element that still measures 0×0 gets a `zeroSize` advisory naming the cause. Nothing scrolls — invariant 2 holds. An integration test measures the image at 0×0 *without* the fix, so the trap is proved rather than described |
 | ~~T-05~~ | ~~Confirm sticky-header behaviour at scroll 0~~ | **Done, and it is a real risk rather than a real problem.** `#main-header` measured 72px at scroll 0 and matched the design exactly. A `fixed` or `sticky` element's rect is still viewport-anchored, so it now reports a `positioning` advisory — louder when the *section container* is the sticky one, since every offset in the run then rests on a rect that slides |
 | ~~T-06~~ | ~~Triage false positives and tune tolerances~~ | **Done in triage 001.** Verdict: no tolerance needs tuning. The noise is four specific causes, addressed by T-27–T-30, not by widening thresholds |
-| T-39 | **Re-run triage 001 and diff it** | Four noise classes are gone and three environmental risks are handled, and nobody has confirmed the 35 findings actually drop to the predicted ~19. Reports are byte-identical between runs, so this is a real check rather than a formality. Everything claimed above is arithmetic until it is a measurement |
+| ~~T-39~~ | ~~Re-run triage 001 and diff it~~ | **Done, and it earned its place.** 35 errors → **exactly the 27 predicted** (19 genuine + the 8 box-shape findings T-27 names rather than removes). It also caught two things no unit test could: `textAutoResize` lives in `style`, not on the node, so T-27 could never have fired on a real file; and `fontAliases` was shipped but never declared in the config, so its three findings were still there. Determinism measured against a live page for the first time — two runs, byte-identical. [docs/triage-002-rerun.md](docs/triage-002-rerun.md) |
 
 ### From triage 001 — the noise has four causes
 
@@ -208,12 +208,13 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 
 | ID | Task |
 | --- | --- |
-| D-16 | 100 tests across 8 suites, one per module boundary (244 across 12 today) |
+| D-16 | 100 tests across 8 suites, one per module boundary (247 across 12 today) |
 | D-17 | Verified against the **real Figma REST API** — fills, text metrics, padding, and the TEXT-vs-frame fill distinction all confirmed on live data |
 | D-18 | Verified against **real Chromium** — percentage border-radius, computed `box-shadow` parsing, NaN survival across the Playwright bridge |
 | D-19 | **Full pipeline validated** — real Figma nodes vs a local fixture with three planted defects. All three caught, plus a missing element, with zero false positives |
 | D-25 | **First green run against a real app** — a React app built from a Figma frame: 11 elements, 66 properties compared, `PASS`. Re-running with every tolerance forced to 0 surfaced sub-pixel deltas (0.078px, 0.141px), confirming the pass is a real measurement agreeing rather than a check that did nothing |
-| D-26 | **Real-site hardening verified against real Chromium** — `tests/fixtures/hardening.html` puts a 64px promo bar inside the section, a `loading="lazy"` image 10,000px down, and a sticky header on one page. The lazy-image suite measures the image at `0×0` through a plain browser load *before* asserting the fix, so the trap is proved rather than described. `report/merge.ts` also got its first direct suite: `PROPERTY_ORDER` is the only thing keeping two runs byte-identical and rested on code inspection. Test count 181 → 244 |
+| D-27 | **Byte-identical output measured against a live page** — invariant 4 had been asserted by unit tests since the beginning. Two runs of triage 002 against the real production page, with fonts, third-party scripts and real network timing, produced `report.json` files identical apart from the timestamp |
+| D-26 | **Real-site hardening verified against real Chromium** — `tests/fixtures/hardening.html` puts a 64px promo bar inside the section, a `loading="lazy"` image 10,000px down, and a sticky header on one page. The lazy-image suite measures the image at `0×0` through a plain browser load *before* asserting the fix, so the trap is proved rather than described. `report/merge.ts` also got its first direct suite: `PROPERTY_ORDER` is the only thing keeping two runs byte-identical and rested on code inspection. Test count 181 → 247 |
 
 ### Documentation and repo setup
 
@@ -247,7 +248,7 @@ output. The UI is for authoring and exploring; CI stays on the CLI.
 
 ## Notes
 
-**Test count is now 244** across 12 suites, up from 100. `npm test` still passes
+**Test count is now 247** across 12 suites, up from 100. `npm test` still passes
 without Chromium because the integration suite skips itself — install it before
 trusting a green run.
 

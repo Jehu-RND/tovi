@@ -1,7 +1,7 @@
 # Handoff
 
-_Written 2026-09-14. Updated 2026-09-17, after the triage, the work it set off,
-and the real-site hardening that followed. On `main`, working tree clean._
+_Written 2026-09-14. Updated 2026-09-18, after the triage, the hardening work it
+set off, and the re-run that checked it._
 
 Read this first if you are picking TOVI up. It covers where the project actually
 stands, what changed recently and why, and what to do next. It does not repeat
@@ -13,7 +13,7 @@ full task list), or [docs/](docs/) (the reference).
 ## Where this stands in one paragraph
 
 TOVI compares a Figma design against a live page and reports where the build
-drifted. The engine is finished, covered by 244 tests, has been **run end to
+drifted. The engine is finished, covered by 247 tests, has been **run end to
 end against the real target**, and — as of
 [docs/triage-001-mens-basketball.md](docs/triage-001-mens-basketball.md) — has
 been **triaged finding by finding**. The verdict: the findings are trustworthy.
@@ -32,10 +32,14 @@ Separately, T-32 closed the authoring trap that made a first run look broken:
 the UI no longer pre-fills a `data-figma-id` selector the page does not have,
 and T-31 wrote the pairing traps down.
 
-What remains, and it is short: **re-run triage 001 and diff it** — nobody has
-confirmed the 35 findings actually drop where the arithmetic says they should —
-**P-03**, which is a question for whoever owns the design file, and the first
-genuine defect the tool found, which is waiting on whoever owns the theme.
+**Triage 001 has been re-run**, and the findings landed on exactly the predicted
+number: 35 errors → 27, which is the 19 genuine defects plus the 8 box-shape
+findings T-27 names rather than removes. Two runs against the live page produced
+byte-identical JSON, so invariant 4 is now measured rather than asserted. See
+[docs/triage-002-rerun.md](docs/triage-002-rerun.md).
+
+What remains is not code: **P-03**, a question for whoever owns the design file,
+and the first genuine defect the tool found, waiting on whoever owns the theme.
 
 ---
 
@@ -62,7 +66,9 @@ This distinction matters more than the test count.
 
 | | Verified against |
 | --- | --- |
-| Comparison engine, both passes | 244 unit tests |
+| Comparison engine, both passes | 247 unit tests |
+| That the findings drop where the arithmetic says | **A second real run.** 35 → exactly the predicted 27, [triage 002](docs/triage-002-rerun.md) |
+| That output is byte-identical between runs | **Two runs against the live page**, diffed. Previously a fixture claim |
 | Browser extraction | Real Chromium, `tests/fixtures/page.html` |
 | Cookie banners, lazy images, sticky headers | Real Chromium, `tests/fixtures/hardening.html`. The lazy-image suite measures the image at `0×0` **without** the fix first, so the trap is proved rather than described |
 | Figma normalization | The real API, real nodes |
@@ -159,9 +165,27 @@ measures 1440×151 at a 1440 viewport and 1500×151 at 1728.
 
 ## What changed recently
 
-**Real-site hardening (latest).** The three risks catalogued before the first
+**The re-run (latest).** [Triage 002](docs/triage-002-rerun.md). Two findings
+worth carrying forward, because both are about how this codebase can be wrong
+while every test is green:
+
+- **`textAutoResize` is not where the Plugin API puts it.** T-27 shipped with
+  six passing unit tests and could never have fired on a real file: the REST API
+  returns the field inside the node's `style` block, not on the node. Nothing
+  failed — an advisory that never fires looks exactly like a design with no
+  shrink-wrapped text in it. The tests passed because their fixtures were
+  invented rather than copied from a real response, so they asserted that the
+  code read the field from where the code read it. Both suites now pin the
+  location and use real API responses as fixtures.
+- **A declared mechanism nobody declares does nothing.** `fontAliases` shipped
+  in T-30 and all three `Gotham` vs `"Hco Gotham"` findings were still in the
+  report, because `tovi.config.json` never declared an alias. Working exactly as
+  designed, and still noise on the page. "The class is closed" was true of the
+  code and false of the output.
+
+**Real-site hardening.** The three risks catalogued before the first
 run and never exercised, plus the last of the four noise classes. Test count
-181 → 244.
+181 → 247.
 
 | Task | What |
 | --- | --- |
@@ -299,27 +323,22 @@ adding a control that takes a raw config value as free text is a regression.
 
 ## What to do next
 
-The triage backlog and the hardening backlog are both closed. What is left is
-short, and neither of the first two items is code.
+The triage backlog and the hardening backlog are both closed and the re-run has
+confirmed them. Neither of the two things left is code.
 
-**1. Re-run triage 001 and diff it.** Four noise classes are gone and three
-environmental risks are handled; **nobody has confirmed the 35 findings
-actually drop to the predicted ~19.** The reports are byte-identical between
-runs, so this is a real check rather than a formality. Do it before trusting a
-single number in this file or in `PROGRESS.md` — everything above is arithmetic
-until it is a measurement.
-
-**2. Take the letter-spacing defect to whoever owns the theme.** It is the first
+**1. Take the letter-spacing defect to whoever owns the theme.** It is the first
 genuine defect TOVI has found: all three headings are missing their negative
 tracking, design `−0.48 / −0.32 / −0.4`px against a live `0`. The design applies
 −1% to headings and the build applies none. Consistent, unambiguous, cheap.
 Worth confirming the tool's output survives contact with the person who has to
 act on it — that is the last untested link in the chain.
 
-**3. P-03 — which "Men's Basketball" frame is authoritative?** See below. This
+**2. P-03 — which "Men's Basketball" frame is authoritative?** See below. This
 decides what a run is even comparing against and outranks everything that is
-left. It is not a guard the tool can supply; it is a question for whoever owns
-the design file.
+left: every number in triage 002 is measured against `11350:4869`, and if the
+structured frame is current, most of the remaining box-shape class disappears at
+the source. It is not a guard the tool can supply; it is a question for whoever
+owns the design file.
 
 ### Then the rest of the board
 

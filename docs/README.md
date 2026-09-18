@@ -21,6 +21,7 @@ which is what makes it usable in CI.
 | [CI integration](ci.md) | Running TOVI on deploy |
 | [Troubleshooting](troubleshooting.md) | A finding looks wrong, or a run behaves oddly |
 | [Triage 001 — Men's Basketball](triage-001-mens-basketball.md) | What the first real run actually produced, and which findings were worth believing |
+| [Triage 002 — the re-run](triage-002-rerun.md) | Whether the findings moved where the arithmetic said, and two bugs only a real run could catch |
 
 Working on the codebase with an AI assistant? Start at [AGENTS.md](../AGENTS.md).
 
@@ -43,7 +44,7 @@ decision the whole tool rests on.
 
 ## Project status
 
-The engine is feature-complete and covered by 244 passing tests, including two
+The engine is feature-complete and covered by 247 passing tests, including two
 integration suites that drive real Chromium. It **has** been run against a real
 production page and the output triaged finding by finding — see
 [triage 001](triage-001-mens-basketball.md) for the verdict, and

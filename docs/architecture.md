@@ -192,7 +192,7 @@ missing node into a reportable issue.
 
 ## Tests
 
-244 tests across 12 files, one per module boundary.
+247 tests across 12 files, one per module boundary.
 
 | File | Covers |
 | --- | --- |

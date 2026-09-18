@@ -1,5 +1,10 @@
 # Triage 001 — Men's Basketball
 
+> **Re-run on 2026-09-18.** The four noise classes below are closed at the
+> source and the findings dropped from 35 to exactly the 27 predicted here. See
+> [triage 002](triage-002-rerun.md), which also records two bugs that only a run
+> against the real file could catch.
+
 _2026-09-14. First triage of a real run. Closes P-02._
 
 This is the record of the thing the project had never done: taking a run against

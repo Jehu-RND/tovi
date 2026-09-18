@@ -144,7 +144,7 @@ layers rather than typing node ids. See [ui.md](ui.md).
 
 ```bash
 npm run typecheck   # tsc --noEmit over src + tests
-npm test            # 244 tests
+npm test            # 247 tests
 ```
 
 The integration suite drives real Chromium against

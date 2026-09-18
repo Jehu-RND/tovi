@@ -33,7 +33,7 @@ npx playwright install chromium     # required for the integration suite
 
 npm run build                       # tsc -> dist/
 npm run typecheck                   # tsc --noEmit over src + tests
-npm test                            # vitest run — 244 tests
+npm test                            # vitest run — 247 tests
 npm run test:watch
 
 npm run check -- --config tovi.config.json --report out/report.html
@@ -230,7 +230,7 @@ assertion that the live value must be zero.
 
 ## Testing
 
-244 tests across 12 suites, one per module boundary. Extend the existing suites
+247 tests across 12 suites, one per module boundary. Extend the existing suites
 rather than
 adding parallel ones.
 

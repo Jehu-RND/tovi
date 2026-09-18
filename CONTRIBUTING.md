@@ -19,7 +19,7 @@ Node 20.12+ is required (`process.loadEnvFile`).
 npm run typecheck && npm test
 ```
 
-Both must pass before a change is done. The baseline is **244 tests across 12
+Both must pass before a change is done. The baseline is **247 tests across 12
 files**.
 
 `npm test` **passes without Chromium** — `tests/extract.integration.test.ts`
