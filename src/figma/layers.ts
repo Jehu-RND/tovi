@@ -81,8 +81,12 @@ export function flattenLayers(file: FigmaFile, options: FlattenOptions = {}): La
     const matchesSearch = options.search === undefined || contains(node.name, options.search);
 
     if (matchesType && matchesSearch) {
-      const hugsText = node.type === 'TEXT' &&
-        (node.textAutoResize === 'WIDTH_AND_HEIGHT' || node.textAutoResize === 'HEIGHT');
+      // In `style`, not on the node — the REST API differs from the Plugin
+      // API here. See extractTextAutoResize() in normalize.ts.
+      const autoResize = node.type === 'TEXT' && typeof node.style === 'object' && node.style !== null
+        ? (node.style as Record<string, unknown>)['textAutoResize']
+        : undefined;
+      const hugsText = autoResize === 'WIDTH_AND_HEIGHT' || autoResize === 'HEIGHT';
       rows.push({
         nodeId: node.id,
         name: node.name,

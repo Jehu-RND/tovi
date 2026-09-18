@@ -406,6 +406,16 @@ describe('diffGeometry — measurement advisories', () => {
     expect(advisory?.actual).toBe('height and offsetY below compare a glyph hug against a laid-out element');
   });
 
+  it('agrees with itself grammatically on both axes and one', () => {
+    // "height are not laid out" shipped to a real report before this test.
+    expect(diffGeometry(textPair('HEIGHT'), section, tolerances)
+      .find((issue) => issue.property === 'boxShape')?.expected)
+      .toContain('height is not laid out');
+    expect(diffGeometry(textPair('WIDTH_AND_HEIGHT'), section, tolerances)
+      .find((issue) => issue.property === 'boxShape')?.expected)
+      .toContain('width and height are not laid out');
+  });
+
   it('says nothing for a TEXT node whose box was laid out', () => {
     const issues = diffGeometry(textPair('NONE'), section, tolerances);
     expect(issues.some((issue) => issue.property === 'boxShape')).toBe(false);

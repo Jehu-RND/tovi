@@ -250,12 +250,13 @@ function measurementAdvisories(
   if (figma.type === 'TEXT' && figma.textAutoResize !== undefined) {
     const hug = figma.textAutoResize;
     if (hug === 'WIDTH_AND_HEIGHT' || hug === 'HEIGHT') {
-      const axes = hug === 'WIDTH_AND_HEIGHT' ? 'width and height' : 'height';
-      const affected = hug === 'WIDTH_AND_HEIGHT' ? 'width, height, offsetX and offsetY' : 'height and offsetY';
+      const bothAxes = hug === 'WIDTH_AND_HEIGHT';
+      const axes = bothAxes ? 'width and height are' : 'height is';
+      const affected = bothAxes ? 'width, height, offsetX and offsetY' : 'height and offsetY';
       issues.push(
         valueIssue(
           figmaId, 'geometry', 'boxShape',
-          `textAutoResize: ${hug} — the design box hugs the glyphs, ${axes} are not laid out`,
+          `textAutoResize: ${hug} — the design box hugs the glyphs, ${axes} not laid out`,
           `${affected} below compare a glyph hug against a laid-out element`,
           { severity: 'info', detail: 'textAutoResize' },
         ),

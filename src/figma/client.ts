@@ -64,10 +64,10 @@ export interface RawFigmaNode {
   paddingLeft?: number;
   characters?: string;
   /**
-   * TEXT nodes only: "NONE" | "HEIGHT" | "WIDTH_AND_HEIGHT" | "TRUNCATE".
-   * Says whether the node's box was laid out or shrink-wrapped to its glyphs.
+   * TEXT nodes: the TypeStyle block. Carries the font metrics AND
+   * `textAutoResize` — which the Plugin API puts on the node, but the REST API
+   * puts here. See extractTextAutoResize() in normalize.ts.
    */
-  textAutoResize?: string;
   style?: Record<string, unknown>;
   children?: RawFigmaNode[];
   [key: string]: unknown;

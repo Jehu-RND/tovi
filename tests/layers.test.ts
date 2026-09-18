@@ -174,6 +174,17 @@ describe('renderLayers', () => {
  * still be cheap to change.
  */
 describe('flattenLayers — glyph-hugging text layers', () => {
+  /**
+   * `textAutoResize` sits inside `style` in the REST API, not on the node —
+   * the Plugin API is the one that puts it on the node. `wrong-place` pins
+   * that: reading the node level found undefined on every real TEXT node and
+   * the marker silently never appeared.
+   */
+  const withStyle = (id: string, name: string, type: string, autoResize?: string) => ({
+    ...node(id, name, type),
+    style: { fontFamily: 'Gotham', fontSize: 32, ...(autoResize !== undefined ? { textAutoResize: autoResize } : {}) },
+  });
+
   const hugFile: FigmaFile = {
     name: 'Sport-Specific Landing Page',
     document: {
@@ -182,10 +193,11 @@ describe('flattenLayers — glyph-hugging text layers', () => {
       type: 'DOCUMENT',
       children: [
         node('1:1', 'Page', 'CANVAS', [
-          { ...node('1:23', 'heading', 'TEXT'), textAutoResize: 'WIDTH_AND_HEIGHT' },
-          { ...node('1:24', 'body', 'TEXT'), textAutoResize: 'HEIGHT' },
-          { ...node('1:25', 'label', 'TEXT'), textAutoResize: 'NONE' },
-          { ...node('1:26', 'card', 'FRAME'), textAutoResize: 'WIDTH_AND_HEIGHT' },
+          withStyle('1:23', 'heading', 'TEXT', 'WIDTH_AND_HEIGHT'),
+          withStyle('1:24', 'body', 'TEXT', 'HEIGHT'),
+          withStyle('1:25', 'label', 'TEXT', 'NONE'),
+          withStyle('1:26', 'card', 'FRAME', 'WIDTH_AND_HEIGHT'),
+          { ...node('1:27', 'wrong-place', 'TEXT'), textAutoResize: 'WIDTH_AND_HEIGHT' },
         ]),
       ],
     },
@@ -208,6 +220,10 @@ describe('flattenLayers — glyph-hugging text layers', () => {
 
   it('never flags a node that is not TEXT', () => {
     expect(byName('card')?.hugsText).toBeUndefined();
+  });
+
+  it('reads it from style, not from the node', () => {
+    expect(byName('wrong-place')?.hugsText).toBeUndefined();
   });
 
   it('marks the flagged rows in the listing, and only those', () => {

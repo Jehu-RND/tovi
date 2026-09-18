@@ -208,14 +208,21 @@ export function extractBorders(node: RawFigmaNode): Borders | undefined {
 /**
  * Read how a TEXT node sizes its own box.
  *
- * Figma omits this on every node type that is not TEXT, and on a TEXT node it
- * is one of four documented values. An unrecognised value returns undefined
- * rather than a guess: the only thing this drives is an advisory, and an
- * advisory that states something untrue about the design file is worse than no
- * advisory at all.
+ * IT LIVES IN `style`, NOT ON THE NODE. The Figma *Plugin* API exposes
+ * `node.textAutoResize`, and every example written against it does the same —
+ * but the REST API this tool uses puts it inside the node's `style` block,
+ * alongside `fontFamily` and `letterSpacing`. Reading the node level finds
+ * `undefined` on every TEXT node in a real file, which is a silent no-op: the
+ * advisory simply never fires and nothing says why. That is what happened, and
+ * only a run against the real file caught it.
+ *
+ * An unrecognised value returns undefined rather than a guess. The only thing
+ * this drives is an advisory, and an advisory that states something untrue
+ * about the design file is worse than no advisory at all.
  */
 export function extractTextAutoResize(node: RawFigmaNode): TextAutoResize | undefined {
-  const raw = str(node as unknown as Record<string, unknown>, 'textAutoResize');
+  if (!isRecord(node.style)) return undefined;
+  const raw = str(node.style, 'textAutoResize');
   if (raw === 'NONE' || raw === 'HEIGHT' || raw === 'WIDTH_AND_HEIGHT' || raw === 'TRUNCATE') {
     return raw;
   }
