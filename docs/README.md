@@ -11,6 +11,7 @@ which is what makes it usable in CI.
 
 | Guide | Read it when |
 | --- | --- |
+| [Project overview](overview.md) | Explaining TOVI to someone who will not read the code — scope, trade-offs and limitations in one place |
 | [Getting started](getting-started.md) | Installing TOVI and getting a first report out |
 | [The local UI](ui.md) | Running checks without hand-editing JSON |
 | [Tagging elements](tagging.md) | Adding `data-figma-id` to a theme or template |
